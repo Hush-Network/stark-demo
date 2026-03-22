@@ -1,0 +1,491 @@
+//! Time-window audit circuit. 16 slots, 24-bit range decomposition.
+
+use num_traits::{One, Zero};
+use stwo::{
+    core::{
+        air::Component,
+        channel::Channel,
+        fields::{m31::M31, qm31::QM31},
+        pcs::CommitmentSchemeVerifier,
+        poly::circle::CanonicCoset,
+        verifier::verify,
+        ColumnVec,
+    },
+    prover::{
+        backend::{
+            simd::{column::BaseColumn, m31::LOG_N_LANES, SimdBackend},
+            Column,
+        },
+        poly::{
+            circle::{CircleEvaluation, PolyOps},
+            BitReversedOrder,
+        },
+        prove, CommitmentSchemeProver,
+    },
+};
+use stwo_constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
+};
+
+use crate::{
+    poseidon2, poseidon2_air,
+    prover_common::{pcs_config, ProverChannel, ProverMerkleChannel},
+    types::MERKLE_DEPTH,
+};
+
+const LOG_CONSTRAINT_EVAL_BLOWUP_FACTOR: u32 = 1;
+const MAX_TX: usize = 16;
+const RANGE_BITS: usize = 24;
+
+const MERKLE_LEVEL_COLS: usize = 3 + poseidon2_air::HASH_INTERMEDIATE_COLS;
+
+const COLS_PER_TX: usize = 2 + 2 * (1 + RANGE_BITS);
+const TX_COLS_START: usize = 58;
+const HASH_COLS_START: usize = TX_COLS_START + MAX_TX * COLS_PER_TX;
+const MERKLE_START: usize = HASH_COLS_START + 2 * poseidon2_air::HASH_INTERMEDIATE_COLS;
+const NUM_COLS: usize = MERKLE_START + MERKLE_DEPTH * MERKLE_LEVEL_COLS;
+
+#[derive(Clone, Debug)]
+pub struct TimeWindowWitness {
+    pub window_start: u32,
+    pub window_end: u32,
+    pub claimed_total: u32,
+    pub cred_root: u32,
+    pub epoch: u32,
+    pub tx_amounts: [u32; MAX_TX],
+    pub tx_timestamps: [u32; MAX_TX],
+    pub tx_count: usize,
+    pub sk: u32,
+    pub cred_issuer: u32,
+    pub cred_expiry: u32,
+    pub cred_secret: u32,
+    pub cred_path: [(u32, u32); MERKLE_DEPTH],
+}
+
+#[derive(Clone)]
+pub struct TimeWindowEval {
+    pub log_size: u32,
+}
+
+impl FrameworkEval for TimeWindowEval {
+    fn log_size(&self) -> u32 {
+        self.log_size
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.log_size + LOG_CONSTRAINT_EVAL_BLOWUP_FACTOR
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        let window_start = eval.next_trace_mask();
+        let window_end = eval.next_trace_mask();
+        let claimed_total = eval.next_trace_mask();
+        let pub_cred_root = eval.next_trace_mask();
+        let epoch = eval.next_trace_mask();
+        let sk = eval.next_trace_mask();
+        let cred_issuer = eval.next_trace_mask();
+        let cred_expiry = eval.next_trace_mask();
+        let cred_secret = eval.next_trace_mask();
+
+        let mut amounts: Vec<E::F> = Vec::with_capacity(MAX_TX);
+        let mut timestamps: Vec<E::F> = Vec::with_capacity(MAX_TX);
+        for _ in 0..MAX_TX {
+            amounts.push(eval.next_trace_mask());
+        }
+        for _ in 0..MAX_TX {
+            timestamps.push(eval.next_trace_mask());
+        }
+
+        // Credential expiry range check
+        let expiry_diff = eval.next_trace_mask();
+        let mut reconstructed = E::F::zero();
+        let mut pow2 = E::F::one();
+        let two = E::F::one() + E::F::one();
+        for _ in 0..16 {
+            let bit = eval.next_trace_mask();
+            eval.add_constraint(bit.clone() * (bit.clone() - E::F::one()));
+            reconstructed += bit * pow2.clone();
+            pow2 *= two.clone();
+        }
+        eval.add_constraint(reconstructed - expiry_diff.clone());
+        eval.add_constraint(expiry_diff - (cred_expiry.clone() - epoch - E::F::one()));
+
+        // Per-transaction constraints
+        let mut total_sum = E::F::zero();
+        for i in 0..MAX_TX {
+            let in_window = eval.next_trace_mask();
+            let contribution = eval.next_trace_mask();
+
+            eval.add_constraint(in_window.clone() * (in_window.clone() - E::F::one()));
+            eval.add_constraint(contribution.clone() - in_window.clone() * amounts[i].clone());
+
+            let ts_lower = eval.next_trace_mask();
+            let mut lower_recon = E::F::zero();
+            let mut pow2 = E::F::one();
+            for _ in 0..RANGE_BITS {
+                let bit = eval.next_trace_mask();
+                eval.add_constraint(bit.clone() * (bit.clone() - E::F::one()));
+                lower_recon += bit * pow2.clone();
+                pow2 *= two.clone();
+            }
+            eval.add_constraint(in_window.clone() * (lower_recon - ts_lower.clone()));
+            eval.add_constraint(
+                in_window.clone() * (ts_lower - (timestamps[i].clone() - window_start.clone())),
+            );
+
+            let ts_upper = eval.next_trace_mask();
+            let mut upper_recon = E::F::zero();
+            let mut pow2 = E::F::one();
+            for _ in 0..RANGE_BITS {
+                let bit = eval.next_trace_mask();
+                eval.add_constraint(bit.clone() * (bit.clone() - E::F::one()));
+                upper_recon += bit * pow2.clone();
+                pow2 *= two.clone();
+            }
+            eval.add_constraint(in_window.clone() * (upper_recon - ts_upper.clone()));
+            eval.add_constraint(
+                in_window * (ts_upper - (window_end.clone() - timestamps[i].clone())),
+            );
+
+            total_sum += contribution;
+        }
+
+        eval.add_constraint(total_sum - claimed_total);
+
+        let owner_out =
+            poseidon2_air::constrain_hash2(&mut eval, sk, E::F::zero(), poseidon2::DOMAIN_OWNER);
+        let cm_out = poseidon2_air::constrain_hash_many_4(
+            &mut eval,
+            cred_issuer,
+            owner_out,
+            cred_expiry,
+            cred_secret,
+            poseidon2::DOMAIN_CRED_CM,
+        );
+
+        let mut current = cm_out;
+        for _ in 0..MERKLE_DEPTH {
+            let sibling = eval.next_trace_mask();
+            let direction = eval.next_trace_mask();
+            let left = eval.next_trace_mask();
+
+            eval.add_constraint(direction.clone() * (direction.clone() - E::F::one()));
+            eval.add_constraint(
+                left.clone() - current.clone() - direction * (sibling.clone() - current.clone()),
+            );
+            let right = current + sibling - left.clone();
+            current =
+                poseidon2_air::constrain_hash2(&mut eval, left, right, poseidon2::DOMAIN_MERKLE);
+        }
+        eval.add_constraint(current - pub_cred_root);
+
+        eval
+    }
+}
+
+pub type TimeWindowComponent = FrameworkComponent<TimeWindowEval>;
+
+pub struct TimeWindowPublicData {
+    pub window_start: u32,
+    pub window_end: u32,
+    pub claimed_total: u32,
+    pub cred_root: u32,
+    pub epoch: u32,
+}
+
+impl TimeWindowPublicData {
+    pub fn mix_into(&self, channel: &mut impl Channel) {
+        channel.mix_u64(self.window_start as u64);
+        channel.mix_u64(self.window_end as u64);
+        channel.mix_u64(self.claimed_total as u64);
+        channel.mix_u64(self.cred_root as u64);
+        channel.mix_u64(self.epoch as u64);
+    }
+}
+
+pub fn prove_time_window(witness: &TimeWindowWitness) -> Result<(), String> {
+    let log_num_rows = LOG_N_LANES;
+    let num_rows = 1 << log_num_rows;
+
+    #[cfg(debug_assertions)]
+    eprintln!("[time_window] tx_count={}, log_rows={}", witness.tx_count, log_num_rows);
+
+    if witness.window_start >= witness.window_end {
+        return Err("Invalid window: start must be before end".to_string());
+    }
+
+    let mut actual_total: u32 = 0;
+    for i in 0..witness.tx_count {
+        let ts = witness.tx_timestamps[i];
+        if ts >= witness.window_start && ts <= witness.window_end {
+            actual_total += witness.tx_amounts[i];
+        }
+    }
+    if actual_total != witness.claimed_total {
+        return Err(format!(
+            "Claimed total {} does not match actual total {} for the window",
+            witness.claimed_total, actual_total
+        ));
+    }
+
+    let sk = M31::from(witness.sk);
+    let owner = poseidon2::derive_owner(sk);
+    let cred_cm = poseidon2::credential_commitment(
+        M31::from(witness.cred_issuer),
+        owner,
+        M31::from(witness.cred_expiry),
+        M31::from(witness.cred_secret),
+    );
+
+    // Verify credential Merkle path
+    let cred_root = M31::from(witness.cred_root);
+    let cred_path: Vec<(M31, u32)> =
+        witness.cred_path.iter().map(|&(s, d)| (M31::from(s), d)).collect();
+    if !poseidon2::verify_merkle_path(cred_cm, &cred_path, cred_root) {
+        return Err("Credential root mismatch".to_string());
+    }
+    if witness.cred_expiry <= witness.epoch {
+        return Err("Credential expired".to_string());
+    }
+
+    let mut cols: Vec<BaseColumn> = (0..NUM_COLS).map(|_| BaseColumn::zeros(num_rows)).collect();
+
+    let expiry_diff_val = witness.cred_expiry - witness.epoch - 1;
+    let mut expiry_bits = [M31::from(0u32); 16];
+    for b in 0..16 {
+        expiry_bits[b] = M31::from((expiry_diff_val >> b) & 1);
+    }
+
+    let owner_hash_cols =
+        poseidon2_air::gen_hash2_intermediates(sk, M31::from(0u32), poseidon2::DOMAIN_OWNER);
+    let cm_hash_cols = poseidon2_air::gen_hash_many_4_intermediates(
+        M31::from(witness.cred_issuer),
+        owner,
+        M31::from(witness.cred_expiry),
+        M31::from(witness.cred_secret),
+        poseidon2::DOMAIN_CRED_CM,
+    );
+
+    // Merkle path trace data
+    let merkle_data = gen_cred_merkle_trace(cred_cm, &witness.cred_path);
+
+    for r in 0..num_rows {
+        cols[0].set(r, M31::from(witness.window_start));
+        cols[1].set(r, M31::from(witness.window_end));
+        cols[2].set(r, M31::from(witness.claimed_total));
+        cols[3].set(r, M31::from(witness.cred_root));
+        cols[4].set(r, M31::from(witness.epoch));
+        cols[5].set(r, sk);
+        cols[6].set(r, M31::from(witness.cred_issuer));
+        cols[7].set(r, M31::from(witness.cred_expiry));
+        cols[8].set(r, M31::from(witness.cred_secret));
+
+        for i in 0..MAX_TX {
+            cols[9 + i].set(r, M31::from(witness.tx_amounts[i]));
+            cols[25 + i].set(r, M31::from(witness.tx_timestamps[i]));
+        }
+
+        cols[41].set(r, M31::from(expiry_diff_val));
+        for b in 0..16 {
+            cols[42 + b].set(r, expiry_bits[b]);
+        }
+
+        for i in 0..MAX_TX {
+            let base = TX_COLS_START + i * COLS_PER_TX;
+            let ts = witness.tx_timestamps[i];
+            let amt = witness.tx_amounts[i];
+            let in_window =
+                if i < witness.tx_count && ts >= witness.window_start && ts <= witness.window_end {
+                    1u32
+                } else {
+                    0u32
+                };
+
+            cols[base].set(r, M31::from(in_window));
+            cols[base + 1].set(r, M31::from(in_window * amt));
+
+            let ts_lower = if in_window == 1 { ts - witness.window_start } else { 0 };
+            let ts_upper = if in_window == 1 { witness.window_end - ts } else { 0 };
+
+            cols[base + 2].set(r, M31::from(ts_lower));
+            for b in 0..RANGE_BITS {
+                cols[base + 3 + b].set(r, M31::from((ts_lower >> b) & 1));
+            }
+
+            cols[base + 2 + 1 + RANGE_BITS].set(r, M31::from(ts_upper));
+            for b in 0..RANGE_BITS {
+                cols[base + 2 + 1 + RANGE_BITS + 1 + b].set(r, M31::from((ts_upper >> b) & 1));
+            }
+        }
+
+        for j in 0..636 {
+            cols[HASH_COLS_START + j].set(r, owner_hash_cols[j]);
+        }
+        for j in 0..636 {
+            cols[HASH_COLS_START + 636 + j].set(r, cm_hash_cols[j]);
+        }
+        for j in 0..merkle_data.len() {
+            cols[MERKLE_START + j].set(r, merkle_data[j]);
+        }
+    }
+
+    let domain = CanonicCoset::new(log_num_rows).circle_domain();
+    let trace: ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>> =
+        cols.into_iter().map(|col| CircleEvaluation::new(domain, col)).collect();
+
+    let public_data = TimeWindowPublicData {
+        window_start: witness.window_start,
+        window_end: witness.window_end,
+        claimed_total: witness.claimed_total,
+        cred_root: witness.cred_root,
+        epoch: witness.epoch,
+    };
+
+    let config = pcs_config();
+    let twiddles = SimdBackend::precompute_twiddles(
+        CanonicCoset::new(
+            log_num_rows + LOG_CONSTRAINT_EVAL_BLOWUP_FACTOR + config.fri_config.log_blowup_factor,
+        )
+        .circle_domain()
+        .half_coset,
+    );
+
+    let channel = &mut ProverChannel::default();
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<SimdBackend, ProverMerkleChannel>::new(config, &twiddles);
+
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(vec![]);
+    tree_builder.commit(channel);
+
+    channel.mix_u64(log_num_rows as u64);
+    public_data.mix_into(channel);
+
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(trace);
+    tree_builder.commit(channel);
+
+    let component = TimeWindowComponent::new(
+        &mut TraceLocationAllocator::default(),
+        TimeWindowEval { log_size: log_num_rows },
+        QM31::zero(),
+    );
+
+    let proof = prove(&[&component], channel, commitment_scheme)
+        .map_err(|e| format!("Time-window proof generation failed: {e:?}"))?;
+
+    let channel = &mut ProverChannel::default();
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<ProverMerkleChannel>::new(config);
+    let sizes = component.trace_log_degree_bounds();
+
+    commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+    channel.mix_u64(log_num_rows as u64);
+    public_data.mix_into(channel);
+    commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+
+    verify(&[&component], channel, commitment_scheme, proof)
+        .map_err(|e| format!("Time-window verification failed: {e:?}"))
+}
+
+fn gen_cred_merkle_trace(leaf: M31, path: &[(u32, u32); MERKLE_DEPTH]) -> Vec<M31> {
+    let mut result = Vec::with_capacity(MERKLE_DEPTH * MERKLE_LEVEL_COLS);
+    let mut current = leaf;
+
+    for &(sibling_val, direction_val) in path.iter() {
+        let sibling = M31::from(sibling_val);
+
+        let (left, right) =
+            if direction_val == 0 { (current, sibling) } else { (sibling, current) };
+
+        result.push(sibling);
+        result.push(M31::from(direction_val));
+        result.push(left);
+
+        let hash_cols =
+            poseidon2_air::gen_hash2_intermediates(left, right, poseidon2::DOMAIN_MERKLE);
+        result.extend_from_slice(&hash_cols);
+
+        current = poseidon2::merkle_hash(left, right);
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_witness() -> TimeWindowWitness {
+        let sk = M31::from(12345u32);
+        let owner = poseidon2::derive_owner(sk);
+        let cred_cm = poseidon2::credential_commitment(
+            M31::from(1u32),
+            owner,
+            M31::from(2000u32),
+            M31::from(777u32),
+        );
+
+        let mut cred_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
+        cred_tree.set_leaf(0, cred_cm);
+        let cred_root = cred_tree.root();
+        let path_vec = cred_tree.path(0);
+
+        let mut cred_path = [(0u32, 0u32); MERKLE_DEPTH];
+        for i in 0..MERKLE_DEPTH {
+            cred_path[i] = (path_vec[i].0 .0, path_vec[i].1);
+        }
+
+        let mut amounts = [0u32; MAX_TX];
+        let mut timestamps = [0u32; MAX_TX];
+        amounts[0] = 50000;
+        timestamps[0] = 100;
+        amounts[1] = 30000;
+        timestamps[1] = 200;
+        amounts[2] = 20000;
+        timestamps[2] = 300;
+        amounts[3] = 10000;
+        timestamps[3] = 400;
+
+        TimeWindowWitness {
+            window_start: 50,
+            window_end: 500,
+            claimed_total: 110000,
+            cred_root: cred_root.0,
+            epoch: 1000,
+            tx_amounts: amounts,
+            tx_timestamps: timestamps,
+            tx_count: 4,
+            sk: 12345,
+            cred_issuer: 1,
+            cred_expiry: 2000,
+            cred_secret: 777,
+            cred_path,
+        }
+    }
+
+    #[test]
+    fn test_time_window_roundtrip() {
+        let witness = valid_witness();
+        prove_time_window(&witness).expect("Time-window proof should succeed");
+    }
+
+    #[test]
+    fn test_mismatched_total() {
+        let mut witness = valid_witness();
+        witness.claimed_total = 999999;
+        match prove_time_window(&witness) {
+            Err(e) => assert!(e.contains("does not match"), "Got: {e}"),
+            Ok(_) => panic!("Should have rejected wrong total"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_window() {
+        let mut witness = valid_witness();
+        witness.window_start = witness.window_end + 1;
+        match prove_time_window(&witness) {
+            Err(e) => assert!(e.contains("Invalid window"), "Got: {e}"),
+            Ok(_) => panic!("Should have rejected invalid window"),
+        }
+    }
+}
