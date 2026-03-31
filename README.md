@@ -1,10 +1,10 @@
-# Hush Network STARK Demo
+# Hush Network STARK Circuits
 
 [![CI](https://github.com/Hush-Network/stark-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/Hush-Network/stark-demo/actions/workflows/ci.yml)
 
-STARK circuit implementation for [Hush Network](https://hushnetwork.io), a private-by-default stablecoin settlement L1 with built-in compliance. Built on [Stwo](https://github.com/starkware-libs/stwo) (FRI-based STARK prover, Mersenne31 field) with Poseidon2 as the in-circuit hash.
+This repository contains the STARK circuit implementation, benchmarks, and architecture notes that power the Hush Network browser demo at [demo.hushnetwork.io](https://demo.hushnetwork.io). The web frontend is deployed separately. This repo is focused on the proving engine and supporting technical documentation.
 
-**Live demo:** [demo.hushnetwork.io](https://demo.hushnetwork.io) (generates real STARK proofs in your browser)
+[Hush Network](https://hushnetwork.io) is a private-by-default stablecoin settlement L1 with built-in compliance. The circuits here are built on [Stwo](https://github.com/starkware-libs/stwo) (FRI-based STARK prover, Mersenne31 field) with Poseidon2 as the in-circuit hash.
 
 ## Circuits
 
@@ -83,7 +83,7 @@ src/
   poseidon2.rs            Poseidon2 hash (M31, width-16, domain-separated)
   poseidon2_air.rs        Poseidon2 AIR constraints
   types.rs                Witness types
-  wasm.rs                 Browser WASM bindings
+  wasm.rs                 WASM bindings (compiled to power the browser demo)
   prover_common.rs        Shared prover utilities
   bin/
     bench.rs              Benchmark suite
@@ -103,8 +103,6 @@ scripts/fmt.sh      # format
 cargo clippy -- -D warnings
 ```
 
-## Binaries
-
 ```bash
 cargo run --bin lifecycle --release   # full protocol flow demo
 cargo run --bin bench --release       # performance benchmarks
@@ -112,7 +110,7 @@ cargo run --bin bench --release       # performance benchmarks
 
 ## Status
 
-This is the cryptographic core for Hush Network. Circuits are functional and tested. Not yet implemented:
+This is the proving engine for Hush Network. Circuits are functional and tested. Not yet implemented:
 
 - Recursive proof aggregation (batching)
 - Consensus (HotStuff-2 BFT is designed, not built)
