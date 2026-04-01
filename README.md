@@ -1,10 +1,20 @@
-# Hush Network STARK Circuits
+# Hush Network STARK Demo
 
 [![CI](https://github.com/Hush-Network/stark-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/Hush-Network/stark-demo/actions/workflows/ci.yml)
 
-This repository contains the STARK circuit implementation, benchmarks, and architecture notes that power the Hush Network browser demo at [demo.hushnetwork.io](https://demo.hushnetwork.io). The web frontend is deployed separately. This repo is focused on the proving engine and supporting technical documentation.
+**[Try it live at demo.hushnetwork.io](https://demo.hushnetwork.io)**
 
-[Hush Network](https://hushnetwork.io) is a private-by-default stablecoin settlement L1 with built-in compliance. The circuits here are built on [Stwo](https://github.com/starkware-libs/stwo) (FRI-based STARK prover, Mersenne31 field) with Poseidon2 as the in-circuit hash.
+Hush Network is building credential-gated private stablecoin settlement. This repository contains the STARK circuits that enforce it: real zero-knowledge proofs over Mersenne31, no trusted setup, running live in the browser. Every transaction proves ownership, balance conservation, and credential validity without revealing sender, receiver, or amount.
+
+Built on [Stwo](https://github.com/starkware-libs/stwo) (FRI-based STARK prover, Mersenne31 field) with Poseidon2 as the in-circuit hash.
+
+## What each circuit proves
+
+| Circuit | What it proves |
+|---------|----------------|
+| Payment | The sender owns the input notes, the credential is valid, and the amounts balance. Sender, receiver, and amount stay hidden. |
+| Credential Issuance | This wallet was authorized by a verified issuer to participate in the network. |
+| Time-Window Audit | This wallet transacted a specific total volume between two timestamps, without revealing individual transactions. |
 
 ## Circuits
 
@@ -47,6 +57,8 @@ Measured on AMD Ryzen 9 / release build. 10 iterations per circuit. Single-threa
 | Payment             |      906ms  |      850ms  |      974ms  |       115ms  |
 | Credential Issuance |      282ms  |      273ms  |      294ms  |   (combined) |
 | Time-Window Audit   |      297ms  |      282ms  |      316ms  |   (combined) |
+
+Browser (WASM): the live demo proves in approximately 1.2s in a modern browser. Verification takes approximately 20ms.
 
 These improve significantly with recursive batching and multi-threading. See [benchmarks/](benchmarks/) for full details.
 
@@ -108,15 +120,15 @@ cargo run --bin lifecycle --release   # full protocol flow demo
 cargo run --bin bench --release       # performance benchmarks
 ```
 
-## Status
+## v1 Scope
 
-This is the proving engine for Hush Network. Circuits are functional and tested. Not yet implemented:
+This is the proving engine for Hush Network. Circuits are functional and tested. Planned extensions:
 
-- Recursive proof aggregation (batching)
-- Consensus (HotStuff-2 BFT is designed, not built)
-- Note discovery protocol
-- Mempool encryption
-- Production wallet SDK
+- **Recursive proof aggregation.** One STARK proof per block is the next milestone. Once in place, a single proof covers all transactions in that block.
+- **Consensus.** HotStuff-2 BFT is designed, not built.
+- **Note discovery protocol.** FMD-based recipient detection is specified, not implemented.
+- **Mempool encryption.** Threshold encryption at block time is specified, not implemented.
+- **Production wallet SDK.** Rust + WASM wallet SDK is next after the node.
 
 See [docs/architecture.md](docs/architecture.md) for the full system design, scaling path, and open problems.
 
