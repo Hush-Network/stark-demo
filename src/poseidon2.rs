@@ -16,6 +16,8 @@ pub const DOMAIN_CRED_CM: u32 = 4;
 pub const DOMAIN_MERKLE: u32 = 5;
 pub const DOMAIN_CRED_NULL: u32 = 6;
 pub const DOMAIN_ISSUER_ID: u32 = 7;
+pub const DOMAIN_TX_BINDING: u32 = 8;
+pub const DOMAIN_SENDER_BINDING: u32 = 9;
 
 pub const EXTERNAL_CONSTANTS: [[u32; 16]; 8] = [
     [
@@ -186,6 +188,14 @@ fn hash_many_4_with_domain(a: M31, b: M31, c: M31, d: M31, domain: u32) -> M31 {
     state[RATE] = M31::from(domain);
     permute_state(&mut state);
     state[0]
+}
+
+pub fn domain_hash2(a: M31, b: M31, domain: u32) -> M31 {
+    hash2_with_domain(a, b, domain)
+}
+
+pub fn domain_hash4(a: M31, b: M31, c: M31, d: M31, domain: u32) -> M31 {
+    hash_many_4_with_domain(a, b, c, d, domain)
 }
 
 // Raw hash without domain separation, used in tests only.

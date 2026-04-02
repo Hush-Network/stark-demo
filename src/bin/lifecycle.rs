@@ -6,6 +6,7 @@ use std::collections::HashSet;
 
 use hush_demo_stark::{
     circuit, credential_issuance, poseidon2, time_window,
+    payment_tx::{compute_mode_a_tx_binding_hash, derive_sender_binding_tag, PAYMENT_TX_V1_REPLAY_DOMAIN},
     types::{PaymentWitness, MERKLE_DEPTH},
 };
 use stwo::core::fields::m31::M31;
@@ -106,6 +107,20 @@ fn build_payment_witness(
         cred_path[i] = (cred_path_vec[i].0 .0, cred_path_vec[i].1);
     }
 
+    let tx_binding_hash = compute_mode_a_tx_binding_hash(
+        PAYMENT_TX_V1_REPLAY_DOMAIN,
+        in_asset,
+        in_asset,
+        1,
+        0,
+        1,
+        out_amt_0,
+        out_owner_0,
+        out_rand_0,
+        out_amt_1,
+        out_rand_1,
+    );
+
     PaymentWitness {
         epoch,
         note_root: ledger.note_tree.root().0,
@@ -121,6 +136,13 @@ fn build_payment_witness(
         out_rand_0,
         out_amt_1,
         out_rand_1,
+        payment_fee_amount: 0,
+        binding_fee_asset: in_asset,
+        fee_amount: 0,
+        fee_class: 1,
+        replay_domain: PAYMENT_TX_V1_REPLAY_DOMAIN,
+        tx_binding_hash,
+        sender_binding_tag: derive_sender_binding_tag(sk, tx_binding_hash),
         cred_issuer,
         cred_expiry,
         cred_secret,
