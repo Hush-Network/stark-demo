@@ -10,3 +10,7 @@
 .DS_Store
 Thumbs.db
 .env
+web/dist/
+web/node_modules/
+web/pkg/
+web/package-lock.json
