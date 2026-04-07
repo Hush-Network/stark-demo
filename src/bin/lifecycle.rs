@@ -5,8 +5,11 @@
 use std::collections::HashSet;
 
 use hush_demo_stark::{
-    circuit, credential_issuance, poseidon2, time_window,
-    payment_tx::{compute_mode_a_tx_binding_hash, derive_sender_binding_tag, PAYMENT_TX_V1_REPLAY_DOMAIN},
+    circuit, credential_issuance,
+    payment_tx::{
+        compute_mode_a_tx_binding_hash, derive_sender_binding_tag, PAYMENT_TX_V1_REPLAY_DOMAIN,
+    },
+    poseidon2, time_window,
     types::{PaymentWitness, MERKLE_DEPTH},
 };
 use stwo::core::fields::m31::M31;

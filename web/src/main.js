@@ -106,17 +106,21 @@ function render() {
   }
 }
 
-function fmtMoney(value) {
-  return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-function fmtAssetValue(value) {
-  return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+function fmt(value, min, max) {
+  return value.toLocaleString('en-US', { minimumFractionDigits: min, maximumFractionDigits: max });
 }
-
-function fmtFee(value) {
-  return value.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-}
+const fmtMoney = (v) => fmt(v, 2, 2);
+const fmtAssetValue = (v) => fmt(v, 2, 3);
+const fmtFee = (v) => fmt(v, 3, 3);
 
 function relativeTime(date) {
   const diff = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
@@ -991,7 +995,7 @@ function openSuccessOverlay(txId) {
       <button class="close-button" onclick="closeOverlay('success-overlay')">×</button>
     </div>
     <div class="success-summary">
-      <div class="success-row"><span>Recipient</span><span>${tx.recipient}</span></div>
+      <div class="success-row"><span>Recipient</span><span>${escapeHtml(tx.recipient)}</span></div>
       <div class="success-row"><span>Amount</span><span>${fmtMoney(tx.amount)} ${tx.asset}</span></div>
       <div class="success-row"><span>Network fee</span><span>${fmtFee(tx.feeAmount)} ${tx.feeAsset}</span></div>
       <div class="success-row"><span>Total debited</span><span>${tx.totalDebited}</span></div>
@@ -1056,13 +1060,13 @@ window.showReceipt = function showReceipt(txId) {
 
 function renderReceiptRow(field, label, value, checked, help) {
   return `
-    <div class="receipt-row" data-field="${field}">
+    <div class="receipt-row" data-field="${escapeHtml(field)}">
       <input type="checkbox" ${checked ? 'checked' : ''}>
       <div>
-        <div class="receipt-label">${label}</div>
-        <span class="receipt-help">${help}</span>
+        <div class="receipt-label">${escapeHtml(label)}</div>
+        <span class="receipt-help">${escapeHtml(help)}</span>
       </div>
-      <div class="receipt-value">${value}</div>
+      <div class="receipt-value">${escapeHtml(value)}</div>
     </div>
   `;
 }
@@ -1208,8 +1212,8 @@ function renderAuditResult() {
   if (result.selected.total_volume) disclosed.push(['Total volume', `${fmtMoney(result.totalVolume)} ${state.activeAsset}`]);
   if (result.selected.tx_count) disclosed.push(['Transaction count', String(result.txs.length)]);
   if (result.selected.time_period) disclosed.push(['Period', `${result.startDate} to ${result.endDate}`]);
-  if (result.selected.recipients) disclosed.push(['Recipients', result.txs.map((tx) => tx.recipient).join(', ')]);
-  if (result.selected.amounts) disclosed.push(['Amounts', result.txs.map((tx) => `${fmtMoney(tx.amount)} ${tx.asset}`).join(' · ')]);
+  if (result.selected.recipients) disclosed.push(['Recipients', result.txs.map((tx) => escapeHtml(tx.recipient)).join(', ')]);
+  if (result.selected.amounts) disclosed.push(['Amounts', result.txs.map((tx) => `${fmtMoney(tx.amount)} ${escapeHtml(tx.asset)}`).join(' · ')]);
 
   const hidden = [];
   if (!result.selected.recipients) hidden.push('Counterparty identities');
@@ -1229,12 +1233,12 @@ function renderAuditResult() {
     <div class="audit-result-block">
       <div class="audit-result-card">
         <h4>Disclosed</h4>
-        ${disclosed.map(([label, value]) => `<div class="audit-result-row"><span>${label}</span><span>${value}</span></div>`).join('')}
-        <div class="audit-result-row"><span>Proof time</span><span>${result.proveMs.toFixed(0)}ms</span></div>
+        ${disclosed.map(([label, value]) => `<div class="audit-result-row"><span>${escapeHtml(label)}</span><span>${value}</span></div>`).join('')}
+        <div class="audit-result-row"><span>Proof time</span><span>${escapeHtml(result.proveMs.toFixed(0))}ms</span></div>
       </div>
       <div class="audit-result-card">
         <h4>Still private</h4>
-        ${hidden.map((label) => `<div class="audit-result-row"><span>${label}</span><span>Hidden</span></div>`).join('')}
+        ${hidden.map((label) => `<div class="audit-result-row"><span>${escapeHtml(label)}</span><span>Hidden</span></div>`).join('')}
       </div>
     </div>
     <div class="modal-actions">

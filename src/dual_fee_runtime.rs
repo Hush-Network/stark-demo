@@ -225,11 +225,7 @@ pub fn quote_payment(request: &WalletQuoteRequest) -> Result<PaymentQuote, Strin
         .amount
         .checked_add(route.payment_fee_deduction(fee_amount))
         .ok_or_else(|| "payment debit overflow".to_string())?;
-    let hush_fee_debit = if route == PaymentRoute::HushSidecar {
-        fee_amount
-    } else {
-        0
-    };
+    let hush_fee_debit = if route == PaymentRoute::HushSidecar { fee_amount } else { 0 };
 
     Ok(PaymentQuote {
         payment_asset: request.payment_asset,
@@ -251,7 +247,9 @@ pub fn inspect_claimable_payouts(settlement: &EpochSettlement) -> Result<PayoutI
     })
 }
 
-pub fn submit_wallet_payment(request: &WalletSubmissionRequest) -> Result<WalletSubmissionResult, String> {
+pub fn submit_wallet_payment(
+    request: &WalletSubmissionRequest,
+) -> Result<WalletSubmissionResult, String> {
     let prepared = prepare_wallet_submission(request)?;
 
     let prove_start = Instant::now();
@@ -293,27 +291,17 @@ pub fn submit_wallet_payment(request: &WalletSubmissionRequest) -> Result<Wallet
         settlement,
         payout_inspection,
         stage_timings: vec![
-            TimedStage {
-                label: "prove".to_string(),
-                duration_ms: prove_time_ms,
-            },
-            TimedStage {
-                label: "verify".to_string(),
-                duration_ms: verify_time_ms,
-            },
-            TimedStage {
-                label: "accounting".to_string(),
-                duration_ms: accounting_time_ms,
-            },
-            TimedStage {
-                label: "epoch_close".to_string(),
-                duration_ms: settlement_time_ms,
-            },
+            TimedStage { label: "prove".to_string(), duration_ms: prove_time_ms },
+            TimedStage { label: "verify".to_string(), duration_ms: verify_time_ms },
+            TimedStage { label: "accounting".to_string(), duration_ms: accounting_time_ms },
+            TimedStage { label: "epoch_close".to_string(), duration_ms: settlement_time_ms },
         ],
     })
 }
 
-fn prepare_wallet_submission(request: &WalletSubmissionRequest) -> Result<PreparedWalletSubmission, String> {
+fn prepare_wallet_submission(
+    request: &WalletSubmissionRequest,
+) -> Result<PreparedWalletSubmission, String> {
     let quote = quote_payment(&WalletQuoteRequest {
         payment_asset: request.payment_asset,
         fee_asset: request.fee_asset,
@@ -335,7 +323,8 @@ fn prepare_wallet_submission(request: &WalletSubmissionRequest) -> Result<Prepar
 
     let route = payment_route(request.payment_asset, request.fee_asset)?;
     let payment_inputs = split_demo_notes(request.payment_balance, 111, 222)?;
-    let recipient_randomness = request.recipient_owner.wrapping_mul(31).wrapping_add(request.amount);
+    let recipient_randomness =
+        request.recipient_owner.wrapping_mul(31).wrapping_add(request.amount);
     let sender_change_randomness = request.payment_balance.wrapping_mul(17).wrapping_add(444);
     let tx = match route {
         PaymentRoute::SameAsset => PaymentTxV1::build_same_asset(
@@ -362,9 +351,7 @@ fn prepare_wallet_submission(request: &WalletSubmissionRequest) -> Result<Prepar
         )?,
     };
 
-    let cred_expiry = request
-        .credential_expiry
-        .unwrap_or(DEMO_ACTIVE_CREDENTIAL_EXPIRY);
+    let cred_expiry = request.credential_expiry.unwrap_or(DEMO_ACTIVE_CREDENTIAL_EXPIRY);
     let payment_context = build_payment_merkle_context(
         DEMO_SENDER_KEY,
         payment_inputs,
@@ -386,22 +373,12 @@ fn prepare_wallet_submission(request: &WalletSubmissionRequest) -> Result<Prepar
                 .ok_or_else(|| "invalid HUSH change after fee deduction".to_string())?,
             randomness: request.hush_balance.wrapping_mul(19).wrapping_add(717),
         };
-        Some(tx.build_hush_fee_witness(
-            DEMO_SENDER_KEY,
-            hush_inputs,
-            hush_change,
-            &hush_context,
-        )?)
+        Some(tx.build_hush_fee_witness(DEMO_SENDER_KEY, hush_inputs, hush_change, &hush_context)?)
     } else {
         None
     };
 
-    Ok(PreparedWalletSubmission {
-        quote,
-        tx,
-        payment_witness,
-        fee_sidecar_witness,
-    })
+    Ok(PreparedWalletSubmission { quote, tx, payment_witness, fee_sidecar_witness })
 }
 
 fn split_demo_notes(total: u32, rand_0: u32, rand_1: u32) -> Result<[NoteInput; 2], String> {
@@ -415,14 +392,8 @@ fn split_demo_notes(total: u32, rand_0: u32, rand_1: u32) -> Result<[NoteInput; 
     left = left.clamp(1, total - 1);
     let right = total - left;
     Ok([
-        NoteInput {
-            amount: left,
-            randomness: rand_0,
-        },
-        NoteInput {
-            amount: right,
-            randomness: rand_1,
-        },
+        NoteInput { amount: left, randomness: rand_0 },
+        NoteInput { amount: right, randomness: rand_1 },
     ])
 }
 
@@ -469,16 +440,8 @@ fn hush_sidecar_view(result: &fee_sidecar::ProofResult) -> HushSidecarProofView 
 
 fn demo_validator_set() -> Vec<ValidatorStakeInfo> {
     vec![
-        ValidatorStakeInfo {
-            validator_id: 1,
-            payout_key: 101,
-            effective_stake: 120,
-        },
-        ValidatorStakeInfo {
-            validator_id: 2,
-            payout_key: 202,
-            effective_stake: 80,
-        },
+        ValidatorStakeInfo { validator_id: 1, payout_key: 101, effective_stake: 120 },
+        ValidatorStakeInfo { validator_id: 2, payout_key: 202, effective_stake: 80 },
     ]
 }
 
@@ -502,8 +465,7 @@ fn demo_participation() -> Vec<ValidatorBlockParticipation> {
 fn base64_encode(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut out = String::with_capacity((bytes.len() * 4).div_ceil(3));
-    const TABLE: &[u8] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut index = 0;
     while index + 2 < bytes.len() {
         let b0 = bytes[index] as usize;
@@ -649,9 +611,8 @@ mod tests {
         let settlement = submit_wallet_payment(&sample_mode_b_request())
             .expect("Mode B submission should succeed")
             .settlement;
-        let record = settlement
-            .payout_record_for_validator(1)
-            .expect("validator 1 payout should exist");
+        let record =
+            settlement.payout_record_for_validator(1).expect("validator 1 payout should exist");
         assert!(record.entitlement.hush > 0);
     }
 
@@ -659,10 +620,7 @@ mod tests {
     fn test_mixed_basket_payout_totals_reconcile_at_consumer_interface() {
         let result = submit_wallet_payment(&sample_mode_b_request())
             .expect("Mode B submission should succeed");
-        assert_eq!(
-            result.payout_inspection.fee_pools,
-            result.payout_inspection.payout_totals
-        );
+        assert_eq!(result.payout_inspection.fee_pools, result.payout_inspection.payout_totals);
         assert_eq!(
             result.payout_inspection.payout_totals.hush,
             u64::from(result.quote.hush_fee_debit)

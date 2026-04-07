@@ -98,12 +98,7 @@ impl FrameworkEval for HushFeeSidecarEval {
         eval.add_constraint((null_0.clone() - null_1.clone()) * null_diff_inv - E::F::one());
 
         let two = E::F::one() + E::F::one();
-        for amt in [
-            in_amt_0.clone(),
-            in_amt_1.clone(),
-            change_amt.clone(),
-            fee_amount.clone(),
-        ] {
+        for amt in [in_amt_0.clone(), in_amt_1.clone(), change_amt.clone(), fee_amount.clone()] {
             let mut recon = E::F::zero();
             let mut p2 = E::F::one();
             for _ in 0..AMT_BITS {
@@ -352,7 +347,8 @@ fn validate_witness(witness: &HushFeeWitness) -> Result<HushFeePublicData, Strin
         ));
     }
 
-    let expected_sender_binding_tag = derive_sender_binding_tag(witness.sk, witness.tx_binding_hash);
+    let expected_sender_binding_tag =
+        derive_sender_binding_tag(witness.sk, witness.tx_binding_hash);
     if witness.sender_binding_tag != expected_sender_binding_tag {
         return Err(format!(
             "sender_binding_tag mismatch: witness {}, expected {}",
@@ -468,7 +464,7 @@ pub fn verify_hush_fee(result: &ProofResult) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::payment_fixtures::{
-        invalid_hush_change_fixture, insufficient_hush_fee_coverage_fixture,
+        insufficient_hush_fee_coverage_fixture, invalid_hush_change_fixture,
         valid_usdc_hush_fee_fixture, valid_usdt_hush_fee_fixture,
         wrong_sender_binding_tag_hush_fee_fixture, wrong_tx_binding_hash_hush_fee_fixture,
     };

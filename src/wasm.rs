@@ -5,10 +5,12 @@ use wasm_bindgen::prelude::*;
 
 use crate::{
     circuit,
-    payment_tx::{compute_mode_a_tx_binding_hash, derive_sender_binding_tag, PAYMENT_TX_V1_REPLAY_DOMAIN},
     dual_fee_runtime::{
         dual_fee_review_snapshot, quote_payment, submit_wallet_payment, WalletQuoteRequest,
         WalletSubmissionRequest,
+    },
+    payment_tx::{
+        compute_mode_a_tx_binding_hash, derive_sender_binding_tag, PAYMENT_TX_V1_REPLAY_DOMAIN,
     },
     types::{PaymentWitness, MERKLE_DEPTH},
 };
@@ -19,15 +21,12 @@ pub struct ProofOutput {
     message: String,
     prove_time_ms: f64,
     verify_time_ms: f64,
-    // Public outputs (populated on success)
     null_0: u32,
     null_1: u32,
     out_cm_0: u32,
     out_cm_1: u32,
     cred_null: u32,
-    // Serialized proof for independent verification (base64-encoded JSON)
     proof_bytes: String,
-    // Public state used in this proof
     note_root: u32,
     cred_root: u32,
     epoch: u32,
@@ -145,11 +144,7 @@ pub fn dual_fee_review_json() -> String {
 
 #[wasm_bindgen]
 pub fn dual_fee_quote_payment_json(payment_asset: u32, fee_asset: u32, amount: u32) -> String {
-    json_result(quote_payment(&WalletQuoteRequest {
-        payment_asset,
-        fee_asset,
-        amount,
-    }))
+    json_result(quote_payment(&WalletQuoteRequest { payment_asset, fee_asset, amount }))
 }
 
 #[wasm_bindgen]
@@ -267,8 +262,7 @@ pub fn prove_and_verify(
     let cred_null = pd.cred_null;
 
     // Serialize proof for independent verification
-    let serialized = serde_json::to_string(&proof_result.proof)
-        .unwrap_or_else(|_| String::new());
+    let serialized = serde_json::to_string(&proof_result.proof).unwrap_or_else(|_| String::new());
     let proof_bytes = use_base64_encode(&serialized);
 
     // Verify
@@ -351,11 +345,17 @@ pub struct AuditOutput {
 #[wasm_bindgen]
 impl AuditOutput {
     #[wasm_bindgen(getter)]
-    pub fn success(&self) -> bool { self.success }
+    pub fn success(&self) -> bool {
+        self.success
+    }
     #[wasm_bindgen(getter)]
-    pub fn message(&self) -> String { self.message.clone() }
+    pub fn message(&self) -> String {
+        self.message.clone()
+    }
     #[wasm_bindgen(getter)]
-    pub fn prove_time_ms(&self) -> f64 { self.prove_time_ms }
+    pub fn prove_time_ms(&self) -> f64 {
+        self.prove_time_ms
+    }
 }
 
 /// Proves a time-window audit for the browser demo.
@@ -371,15 +371,18 @@ pub fn prove_time_window_audit(
     cred_secret: u32,
 ) -> AuditOutput {
     use stwo::core::fields::m31::M31;
-    use crate::{poseidon2, time_window};
-    use crate::types::MERKLE_DEPTH;
+
+    use crate::{poseidon2, time_window, types::MERKLE_DEPTH};
 
     const MAX_TX: usize = 16;
 
     // Build credential tree
     let owner = poseidon2::derive_owner(M31::from(sk));
     let cred_cm = poseidon2::credential_commitment(
-        M31::from(cred_issuer), owner, M31::from(cred_expiry), M31::from(cred_secret),
+        M31::from(cred_issuer),
+        owner,
+        M31::from(cred_expiry),
+        M31::from(cred_secret),
     );
     let mut cred_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
     cred_tree.set_leaf(0, cred_cm);
@@ -433,9 +436,7 @@ pub fn prove_time_window_audit(
     }
 }
 
-/// High-level wrapper for the browser demo: takes simple payment parameters,
-/// computes randomness, builds Merkle trees and paths internally, proves and verifies.
-/// Returns a ProofOutput including proof_bytes for independent verification.
+/// Proves a payment from raw parameters. Builds all witness data internally.
 #[wasm_bindgen]
 pub fn build_witness_and_prove(
     epoch: u32,
@@ -451,6 +452,7 @@ pub fn build_witness_and_prove(
     cred_secret: u32,
 ) -> ProofOutput {
     use stwo::core::fields::m31::M31;
+
     use crate::poseidon2;
 
     // Fixed demo randomness (not secret — demo only)
@@ -464,10 +466,16 @@ pub fn build_witness_and_prove(
 
     // Compute note commitments
     let cm0 = poseidon2::note_commitment(
-        M31::from(in_asset), M31::from(in_amt_0), owner, M31::from(in_rand_0),
+        M31::from(in_asset),
+        M31::from(in_amt_0),
+        owner,
+        M31::from(in_rand_0),
     );
     let cm1 = poseidon2::note_commitment(
-        M31::from(in_asset), M31::from(in_amt_1), owner, M31::from(in_rand_1),
+        M31::from(in_asset),
+        M31::from(in_amt_1),
+        owner,
+        M31::from(in_rand_1),
     );
 
     // Build note Merkle tree and extract paths
@@ -565,8 +573,7 @@ pub fn build_witness_and_prove(
     let cred_null = pd.cred_null;
 
     // Serialize proof for independent verification
-    let serialized = serde_json::to_string(&proof_result.proof)
-        .unwrap_or_else(|_| String::new());
+    let serialized = serde_json::to_string(&proof_result.proof).unwrap_or_else(|_| String::new());
     let proof_bytes = use_base64_encode(&serialized);
 
     // Verify
@@ -621,11 +628,13 @@ pub fn verify_serialized_proof(
     cred_null: u32,
 ) -> String {
     use num_traits::Zero;
-    use stwo::core::fields::qm31::QM31;
-    use stwo::prover::backend::simd::m31::LOG_N_LANES;
+    use stwo::{core::fields::qm31::QM31, prover::backend::simd::m31::LOG_N_LANES};
     use stwo_constraint_framework::{FrameworkComponent, TraceLocationAllocator};
-    use crate::circuit::{HushPaymentEval, PaymentPublicData, ProofResult};
-    use crate::prover_common::ProverMerkleHasher;
+
+    use crate::{
+        circuit::{HushPaymentEval, PaymentPublicData, ProofResult},
+        prover_common::ProverMerkleHasher,
+    };
 
     // Decode base64
     let json_bytes = match base64_decode(proof_b64) {
@@ -679,19 +688,39 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, &'static str> {
     const TABLE: [u8; 256] = {
         let mut t = [255u8; 256];
         let mut i = 0u8;
-        while i < 26 { t[(b'A' + i) as usize] = i; t[(b'a' + i) as usize] = 26 + i; i += 1; }
+        while i < 26 {
+            t[(b'A' + i) as usize] = i;
+            t[(b'a' + i) as usize] = 26 + i;
+            i += 1;
+        }
         let mut i = 0u8;
-        while i < 10 { t[(b'0' + i) as usize] = 52 + i; i += 1; }
-        t[b'+' as usize] = 62; t[b'/' as usize] = 63; t[b'=' as usize] = 0;
+        while i < 10 {
+            t[(b'0' + i) as usize] = 52 + i;
+            i += 1;
+        }
+        t[b'+' as usize] = 62;
+        t[b'/' as usize] = 63;
+        t[b'=' as usize] = 0;
         t
     };
     let mut i = 0;
     while i + 3 < s.len() {
-        let (a, b, c, d) = (TABLE[s[i] as usize], TABLE[s[i+1] as usize], TABLE[s[i+2] as usize], TABLE[s[i+3] as usize]);
-        if a == 255 || b == 255 { return Err("invalid base64"); }
+        let (a, b, c, d) = (
+            TABLE[s[i] as usize],
+            TABLE[s[i + 1] as usize],
+            TABLE[s[i + 2] as usize],
+            TABLE[s[i + 3] as usize],
+        );
+        if a == 255 || b == 255 {
+            return Err("invalid base64");
+        }
         out.push((a << 2) | (b >> 4));
-        if s[i+2] != b'=' { out.push((b << 4) | (c >> 2)); }
-        if s[i+3] != b'=' { out.push((c << 6) | d); }
+        if s[i + 2] != b'=' {
+            out.push((b << 4) | (c >> 2));
+        }
+        if s[i + 3] != b'=' {
+            out.push((c << 6) | d);
+        }
         i += 4;
     }
     Ok(out)

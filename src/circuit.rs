@@ -121,8 +121,7 @@ impl FrameworkEval for HushPaymentEval {
 
         // Balance conservation
         eval.add_constraint(
-            in_amt_0.clone()
-                + in_amt_1.clone()
+            in_amt_0.clone() + in_amt_1.clone()
                 - out_amt_0.clone()
                 - out_amt_1.clone()
                 - payment_fee_amount.clone(),
@@ -290,7 +289,7 @@ pub fn gen_trace(
     let out_rand_0 = M31::from(witness.out_rand_0);
     let out_amt_1 = M31::from(witness.out_amt_1);
     let out_rand_1 = M31::from(witness.out_rand_1);
-        let payment_fee_amount = M31::from(witness.payment_fee_amount);
+    let payment_fee_amount = M31::from(witness.payment_fee_amount);
 
     let out_cm_0 = poseidon2::note_commitment(in_asset, out_amt_0, out_owner_0, out_rand_0);
     let out_cm_1 = poseidon2::note_commitment(in_asset, out_amt_1, owner, out_rand_1);
@@ -599,7 +598,8 @@ pub fn prove_payment(witness: &PaymentWitness) -> Result<ProofResult, String> {
             witness.tx_binding_hash, expected_binding_hash
         ));
     }
-    let expected_sender_binding_tag = derive_sender_binding_tag(witness.sk, witness.tx_binding_hash);
+    let expected_sender_binding_tag =
+        derive_sender_binding_tag(witness.sk, witness.tx_binding_hash);
     if witness.sender_binding_tag != expected_sender_binding_tag {
         return Err(format!(
             "sender_binding_tag mismatch: witness {}, expected {}",
@@ -780,7 +780,8 @@ fn validate_witness(witness: &PaymentWitness) -> Result<PaymentPublicData, Strin
             witness.tx_binding_hash, expected_binding_hash
         ));
     }
-    let expected_sender_binding_tag = derive_sender_binding_tag(witness.sk, witness.tx_binding_hash);
+    let expected_sender_binding_tag =
+        derive_sender_binding_tag(witness.sk, witness.tx_binding_hash);
     if witness.sender_binding_tag != expected_sender_binding_tag {
         return Err(format!(
             "sender_binding_tag mismatch: witness {}, expected {}",
@@ -956,13 +957,7 @@ fn gen_trace_batch(
             cols[29 + i].set(r, expiry_bits[i]);
         }
 
-        let amts = [
-            w.in_amt_0,
-            w.in_amt_1,
-            w.out_amt_0,
-            w.out_amt_1,
-            w.payment_fee_amount,
-        ];
+        let amts = [w.in_amt_0, w.in_amt_1, w.out_amt_0, w.out_amt_1, w.payment_fee_amount];
         for (ai, &av) in amts.iter().enumerate() {
             for b in 0..AMT_BITS {
                 cols[45 + ai * AMT_BITS + b].set(r, M31::from((av >> b) & 1));
@@ -1165,7 +1160,9 @@ mod tests {
         let mut witness = valid_witness();
         witness.fee_amount += 1;
         match prove_payment(&witness) {
-            Err(e) => assert!(e.contains("Balance conservation failed") || e.contains("tx_binding_hash mismatch")),
+            Err(e) => assert!(
+                e.contains("Balance conservation failed") || e.contains("tx_binding_hash mismatch")
+            ),
             Ok(_) => panic!("Should have rejected wrong fee amount"),
         }
     }

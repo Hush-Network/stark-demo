@@ -19,11 +19,7 @@ pub struct PaymentFixtureContext {
 
 type NoteMerkleContext = (u32, [(u32, u32); MERKLE_DEPTH], [(u32, u32); MERKLE_DEPTH]);
 
-fn build_note_context(
-    sk: u32,
-    asset: AssetId,
-    inputs: [NoteInput; 2],
-) -> NoteMerkleContext {
+fn build_note_context(sk: u32, asset: AssetId, inputs: [NoteInput; 2]) -> NoteMerkleContext {
     let owner = poseidon2::derive_owner(M31::from(sk));
     let asset = M31::from(asset.as_u32());
 
@@ -64,7 +60,8 @@ pub fn build_payment_merkle_context(
     cred_secret: u32,
     epoch: u32,
 ) -> PaymentMerkleContext {
-    let (note_root, note_path_0, note_path_1) = build_note_context(sk, payment_asset, payment_inputs);
+    let (note_root, note_path_0, note_path_1) =
+        build_note_context(sk, payment_asset, payment_inputs);
     let owner = poseidon2::derive_owner(M31::from(sk));
     let cred_cm = poseidon2::credential_commitment(
         M31::from(cred_issuer),
@@ -118,14 +115,22 @@ fn build_context(
         PaymentRoute::SameAsset => PaymentTxV1::build_same_asset(
             payment_asset,
             payment_inputs.clone(),
-            RecipientIntent { amount: recipient_amount, owner: recipient_owner, randomness: recipient_randomness },
+            RecipientIntent {
+                amount: recipient_amount,
+                owner: recipient_owner,
+                randomness: recipient_randomness,
+            },
             sender_change_randomness,
             sk,
         ),
         PaymentRoute::HushSidecar => PaymentTxV1::build_with_hush_fee(
             payment_asset,
             payment_inputs.clone(),
-            RecipientIntent { amount: recipient_amount, owner: recipient_owner, randomness: recipient_randomness },
+            RecipientIntent {
+                amount: recipient_amount,
+                owner: recipient_owner,
+                randomness: recipient_randomness,
+            },
             sender_change_randomness,
             sk,
         ),
@@ -152,10 +157,7 @@ fn build_context(
                 tx.build_hush_fee_witness(
                     sk,
                     hush_inputs,
-                    SenderChangeIntent {
-                        amount: change_total,
-                        randomness: hush_change_randomness,
-                    },
+                    SenderChangeIntent { amount: change_total, randomness: hush_change_randomness },
                     &hush_context,
                 )
                 .expect("fixture HUSH sidecar should build"),
@@ -230,10 +232,7 @@ pub fn valid_usdc_hush_fee_fixture() -> PaymentFixtureContext {
         77_777,
         333,
         444,
-        Some([
-            NoteInput { amount: 8, randomness: 515 },
-            NoteInput { amount: 4, randomness: 616 },
-        ]),
+        Some([NoteInput { amount: 8, randomness: 515 }, NoteInput { amount: 4, randomness: 616 }]),
         Some(717),
         1,
         2_000,
@@ -311,10 +310,8 @@ pub fn wrong_tx_binding_hash_hush_fee_fixture() -> PaymentFixtureContext {
 
 pub fn insufficient_hush_fee_coverage_fixture() -> PaymentFixtureContext {
     let mut fixture = valid_usdc_hush_fee_fixture();
-    let sidecar = fixture
-        .fee_sidecar_witness
-        .as_mut()
-        .expect("valid Mode B fixture should include sidecar");
+    let sidecar =
+        fixture.fee_sidecar_witness.as_mut().expect("valid Mode B fixture should include sidecar");
     sidecar.in_amt_0 = 2;
     sidecar.in_amt_1 = 2;
     sidecar.change_amt = 0;

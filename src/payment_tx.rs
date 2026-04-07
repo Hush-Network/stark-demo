@@ -322,7 +322,9 @@ impl PaymentTxV1 {
     ) -> Result<HushFeeWitness, String> {
         let route = validate_payment_tx(self)?;
         if route != PaymentRoute::HushSidecar {
-            return Err("HUSH fee sidecar witness is only valid for Mode B transactions".to_string());
+            return Err(
+                "HUSH fee sidecar witness is only valid for Mode B transactions".to_string()
+            );
         }
 
         let expected_sender_binding_tag = derive_sender_binding_tag(sk, self.tx_binding_hash);
@@ -393,8 +395,8 @@ pub fn validate_tx_kind_fee_asset_policy(
     let fee_asset = AssetId::try_from_u32(fee_asset)?;
     match tx_kind {
         TxKind::Payment => {
-            let payment_asset =
-                payment_asset.ok_or_else(|| "payment tx_kind requires payment_asset".to_string())?;
+            let payment_asset = payment_asset
+                .ok_or_else(|| "payment tx_kind requires payment_asset".to_string())?;
             payment_route(payment_asset, fee_asset.as_u32()).map(|_| ())
         }
         TxKind::ValidatorAction
@@ -695,20 +697,14 @@ mod tests {
 
     #[test]
     fn test_hush_only_action_fee_policy() {
-        validate_tx_kind_fee_asset_policy(
+        validate_tx_kind_fee_asset_policy(TX_KIND_VALIDATOR_ACTION, None, AssetId::Hush as u32)
+            .expect("validator action should accept HUSH");
+        assert!(validate_tx_kind_fee_asset_policy(
             TX_KIND_VALIDATOR_ACTION,
             None,
-            AssetId::Hush as u32,
+            AssetId::Usdc as u32,
         )
-        .expect("validator action should accept HUSH");
-        assert!(
-            validate_tx_kind_fee_asset_policy(
-                TX_KIND_VALIDATOR_ACTION,
-                None,
-                AssetId::Usdc as u32,
-            )
-            .is_err()
-        );
+        .is_err());
     }
 
     #[test]
@@ -725,13 +721,11 @@ mod tests {
             AssetId::Hush as u32,
         )
         .expect("USDT HUSH sidecar path should be allowed");
-        assert!(
-            validate_tx_kind_fee_asset_policy(
-                TX_KIND_PAYMENT,
-                Some(AssetId::Usdt as u32),
-                AssetId::Usdc as u32,
-            )
-            .is_err()
-        );
+        assert!(validate_tx_kind_fee_asset_policy(
+            TX_KIND_PAYMENT,
+            Some(AssetId::Usdt as u32),
+            AssetId::Usdc as u32,
+        )
+        .is_err());
     }
 }
