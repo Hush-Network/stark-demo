@@ -9,6 +9,25 @@ pub fn wasm_init() {
     console_error_panic_hook::set_once();
 }
 
+/// Validate an f64 value from JavaScript before casting to u64.
+/// Rejects NaN, infinity, negative values, non-integers, and values
+/// above Number.MAX_SAFE_INTEGER (2^53 - 1) where f64 loses precision.
+fn validate_f64_amount(v: f64, name: &str) -> Result<u64, String> {
+    if !v.is_finite() {
+        return Err(format!("{name} is not finite"));
+    }
+    if v < 0.0 {
+        return Err(format!("{name} is negative"));
+    }
+    if v != v.floor() {
+        return Err(format!("{name} is not an integer"));
+    }
+    if v > 9_007_199_254_740_991.0 {
+        return Err(format!("{name} exceeds safe integer range"));
+    }
+    Ok(v as u64)
+}
+
 use crate::{
     circuit,
     dual_fee_runtime::{
@@ -142,6 +161,10 @@ fn json_result<T: Serialize>(result: Result<T, String>) -> String {
     }
 }
 
+fn json_error(msg: &str) -> String {
+    serde_json::json!({ "ok": false, "error": msg }).to_string()
+}
+
 #[wasm_bindgen]
 pub fn dual_fee_review_json() -> String {
     serde_json::json!({
@@ -153,11 +176,11 @@ pub fn dual_fee_review_json() -> String {
 
 #[wasm_bindgen]
 pub fn dual_fee_quote_payment_json(payment_asset: u32, fee_asset: u32, amount: f64) -> String {
-    json_result(quote_payment(&WalletQuoteRequest {
-        payment_asset,
-        fee_asset,
-        amount: amount as u64,
-    }))
+    let amount = match validate_f64_amount(amount, "amount") {
+        Ok(v) => v,
+        Err(e) => return json_error(&e),
+    };
+    json_result(quote_payment(&WalletQuoteRequest { payment_asset, fee_asset, amount }))
 }
 
 #[wasm_bindgen]
@@ -170,13 +193,25 @@ pub fn dual_fee_submit_demo_payment_json(
     hush_balance: f64,
     credential_expiry: u32,
 ) -> String {
+    let amount = match validate_f64_amount(amount, "amount") {
+        Ok(v) => v,
+        Err(e) => return json_error(&e),
+    };
+    let payment_balance = match validate_f64_amount(payment_balance, "payment_balance") {
+        Ok(v) => v,
+        Err(e) => return json_error(&e),
+    };
+    let hush_balance = match validate_f64_amount(hush_balance, "hush_balance") {
+        Ok(v) => v,
+        Err(e) => return json_error(&e),
+    };
     json_result(submit_wallet_payment(&WalletSubmissionRequest {
         payment_asset,
         fee_asset,
-        amount: amount as u64,
+        amount,
         recipient_owner,
-        payment_balance: payment_balance as u64,
-        hush_balance: hush_balance as u64,
+        payment_balance,
+        hush_balance,
         credential_expiry: (credential_expiry != 0).then_some(credential_expiry),
     }))
 }
@@ -214,10 +249,22 @@ pub fn prove_and_verify(
         );
     }
 
-    let in_amt_0 = in_amt_0 as u64;
-    let in_amt_1 = in_amt_1 as u64;
-    let out_amt_0 = out_amt_0 as u64;
-    let out_amt_1 = out_amt_1 as u64;
+    let in_amt_0 = match validate_f64_amount(in_amt_0, "in_amt_0") {
+        Ok(v) => v,
+        Err(e) => return error_output(e, 0.0),
+    };
+    let in_amt_1 = match validate_f64_amount(in_amt_1, "in_amt_1") {
+        Ok(v) => v,
+        Err(e) => return error_output(e, 0.0),
+    };
+    let out_amt_0 = match validate_f64_amount(out_amt_0, "out_amt_0") {
+        Ok(v) => v,
+        Err(e) => return error_output(e, 0.0),
+    };
+    let out_amt_1 = match validate_f64_amount(out_amt_1, "out_amt_1") {
+        Ok(v) => v,
+        Err(e) => return error_output(e, 0.0),
+    };
 
     let tx_binding_hash = compute_mode_a_tx_binding_hash(
         PAYMENT_TX_V1_REPLAY_DOMAIN,
@@ -421,7 +468,17 @@ pub fn prove_time_window_audit(
         tx_timestamps[i] = if i < timestamps.len() { timestamps[i] } else { window_start };
     }
 
-    let claimed_total: u32 = tx_amounts[..tx_count].iter().sum();
+    let claimed_total: u32 =
+        match tx_amounts[..tx_count].iter().try_fold(0u32, |acc, &x| acc.checked_add(x)) {
+            Some(total) => total,
+            None => {
+                return AuditOutput {
+                    success: false,
+                    message: "Amount total overflows u32".to_string(),
+                    prove_time_ms: 0.0,
+                };
+            }
+        };
 
     let witness = time_window::TimeWindowWitness {
         window_start,
@@ -475,10 +532,22 @@ pub fn build_witness_and_prove(
 
     use crate::poseidon2;
 
-    let in_amt_0 = in_amt_0 as u64;
-    let in_amt_1 = in_amt_1 as u64;
-    let out_amt_0 = out_amt_0 as u64;
-    let out_amt_1 = out_amt_1 as u64;
+    let in_amt_0 = match validate_f64_amount(in_amt_0, "in_amt_0") {
+        Ok(v) => v,
+        Err(e) => return error_output(e, 0.0),
+    };
+    let in_amt_1 = match validate_f64_amount(in_amt_1, "in_amt_1") {
+        Ok(v) => v,
+        Err(e) => return error_output(e, 0.0),
+    };
+    let out_amt_0 = match validate_f64_amount(out_amt_0, "out_amt_0") {
+        Ok(v) => v,
+        Err(e) => return error_output(e, 0.0),
+    };
+    let out_amt_1 = match validate_f64_amount(out_amt_1, "out_amt_1") {
+        Ok(v) => v,
+        Err(e) => return error_output(e, 0.0),
+    };
 
     // Fixed demo randomness (not secret — demo only)
     let in_rand_0: u32 = 42;
@@ -684,7 +753,11 @@ pub fn verify_serialized_proof(
         cred_null,
     };
 
-    // Reconstruct the component with the same log_num_rows as used during proving
+    // LIMITATION: This reconstruction uses LOG_N_LANES as the log_num_rows, which
+    // is correct only for single-payment fixed-shape proofs generated by this demo.
+    // A production verifier would need to receive log_num_rows as a parameter or
+    // derive it from the proof structure, since different circuit shapes (batch
+    // payments, multi-transaction blocks) will use different trace sizes.
     let log_num_rows = LOG_N_LANES;
     let component = FrameworkComponent::<HushPaymentEval>::new(
         &mut TraceLocationAllocator::default(),
@@ -734,9 +807,15 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, &'static str> {
         }
         out.push((a << 2) | (b >> 4));
         if s[i + 2] != b'=' {
+            if c == 255 {
+                return Err("invalid base64");
+            }
             out.push((b << 4) | (c >> 2));
         }
         if s[i + 3] != b'=' {
+            if d == 255 {
+                return Err("invalid base64");
+            }
             out.push((c << 6) | d);
         }
         i += 4;
@@ -775,8 +854,10 @@ pub fn compute_note_root(
 
     use crate::poseidon2;
 
-    let in_amt_0 = in_amt_0 as u64;
-    let in_amt_1 = in_amt_1 as u64;
+    let in_amt_0 = validate_f64_amount(in_amt_0, "in_amt_0")
+        .expect("in_amt_0 must be a safe non-negative integer");
+    let in_amt_1 = validate_f64_amount(in_amt_1, "in_amt_1")
+        .expect("in_amt_1 must be a safe non-negative integer");
 
     let owner = poseidon2::derive_owner(M31::from(sk));
     let asset = M31::from(in_asset);

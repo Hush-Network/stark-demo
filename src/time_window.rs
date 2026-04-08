@@ -218,7 +218,9 @@ pub fn prove_time_window(witness: &TimeWindowWitness) -> Result<(), String> {
     for i in 0..witness.tx_count {
         let ts = witness.tx_timestamps[i];
         if ts >= witness.window_start && ts <= witness.window_end {
-            actual_total += witness.tx_amounts[i];
+            actual_total = actual_total.checked_add(witness.tx_amounts[i]).ok_or_else(|| {
+                "time-window total overflow: sum of in-window amounts exceeds u32".to_string()
+            })?;
         }
     }
     if actual_total != witness.claimed_total {
