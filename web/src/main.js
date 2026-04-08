@@ -1121,10 +1121,19 @@ window.generateAuditSummary = async function generateAuditSummary() {
 
   try {
     const txs = currentAssetTransactions();
-    // Time-window circuit uses single u32 amounts (not multi-limb), so pass display dollars directly.
-    const amounts = new Uint32Array(txs.map((tx) => Math.max(1, Math.round(tx.amount))));
-    const timestamps = new Uint32Array(txs.map((_, index) => 100 + index));
-    const result = prove_time_window_audit(100, 100 + txs.length, amounts, timestamps, SK, CRED_ISSUER, CRED_EXPIRY, CRED_SECRET);
+    // Convert display dollars to protocol units (u32). AMT_SCALE maps dollars to protocol units.
+    const amounts = new Uint32Array(txs.map((tx) => {
+      const units = Math.round(tx.amount * AMT_SCALE);
+      if (units > 0xFFFFFFFF) throw new Error('Amount exceeds u32 at current AMT_SCALE');
+      return Math.max(1, units);
+    }));
+    // Use real Unix-second timestamps from transactions (fallback to current time if absent).
+    const nowTs = Math.floor(Date.now() / 1000);
+    const timestamps = new Uint32Array(txs.map((tx) => tx.unixTimestamp || nowTs));
+    // Convert user-selected date range to Unix-second window bounds.
+    const startTs = startDate ? Math.floor(new Date(startDate + 'T00:00:00').getTime() / 1000) : timestamps[0] || nowTs;
+    const endTs = endDate ? Math.floor(new Date(endDate + 'T23:59:59').getTime() / 1000) : nowTs;
+    const result = prove_time_window_audit(startTs, endTs, amounts, timestamps, SK, CRED_ISSUER, CRED_EXPIRY, CRED_SECRET);
 
     if (!result.success) {
       pushLog('error', result.message);
