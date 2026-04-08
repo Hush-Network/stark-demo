@@ -5,8 +5,11 @@
 use std::collections::HashSet;
 
 use hush_demo_stark::{
-    circuit, credential_issuance, poseidon2, time_window,
-    payment_tx::{compute_mode_a_tx_binding_hash, derive_sender_binding_tag, PAYMENT_TX_V1_REPLAY_DOMAIN},
+    circuit, credential_issuance,
+    payment_tx::{
+        compute_mode_a_tx_binding_hash, derive_sender_binding_tag, PAYMENT_TX_V1_REPLAY_DOMAIN,
+    },
+    poseidon2, time_window,
     types::{PaymentWitness, MERKLE_DEPTH},
 };
 use stwo::core::fields::m31::M31;
@@ -209,10 +212,8 @@ fn main() {
     // --- Step 3: Create initial notes for Alice ---
     println!("\nStep 3: Create initial notes for Alice");
     let asset = M31::from(1u32);
-    let note_0 =
-        poseidon2::note_commitment_u64(asset, 7000u64, alice_owner, M31::from(111u32));
-    let note_1 =
-        poseidon2::note_commitment_u64(asset, 3000u64, alice_owner, M31::from(222u32));
+    let note_0 = poseidon2::note_commitment_u64(asset, 7000u64, alice_owner, M31::from(111u32));
+    let note_1 = poseidon2::note_commitment_u64(asset, 3000u64, alice_owner, M31::from(222u32));
     let idx_0 = ledger.add_note(note_0);
     let idx_1 = ledger.add_note(note_1);
     println!("  Note {}: 7000 units (cm: {})", idx_0, note_0.0);
@@ -274,8 +275,7 @@ fn main() {
     // --- Step 5: Second payment (Alice spends her change) ---
     // Alice's change note is at change_idx. She needs a second note — use a zero-value dummy.
     println!("\nStep 5: Second payment (Alice spends 2000 change -> 1500 + 500)");
-    let dummy_note =
-        poseidon2::note_commitment_u64(asset, 0u64, alice_owner, M31::from(555u32));
+    let dummy_note = poseidon2::note_commitment_u64(asset, 0u64, alice_owner, M31::from(555u32));
     let dummy_idx = ledger.add_note(dummy_note);
 
     // Reset credential nullifier set for new epoch

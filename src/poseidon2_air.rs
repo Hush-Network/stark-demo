@@ -325,7 +325,14 @@ pub fn constrain_hash_many_4<E: EvalAtRow>(
 }
 
 pub fn gen_hash_many_7_intermediates(
-    i0: M31, i1: M31, i2: M31, i3: M31, i4: M31, i5: M31, i6: M31, domain: u32,
+    i0: M31,
+    i1: M31,
+    i2: M31,
+    i3: M31,
+    i4: M31,
+    i5: M31,
+    i6: M31,
+    domain: u32,
 ) -> Vec<M31> {
     let mut input = [M31::from(0u32); WIDTH];
     input[0] = i0;
