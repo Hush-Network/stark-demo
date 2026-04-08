@@ -42,10 +42,10 @@ Three STARK circuits on Stwo over Mersenne31, with full Poseidon2 AIR constraint
 - Note consumption and creation with nullifier/commitment pairs
 - Balance conservation enforced in-circuit (supports both HUSH-only and dual-payment fee paths)
 - Nullifier inequality check (prevents double-spend)
-- Amount range checks (21-bit decomposition per amount, 5 amounts including fee field)
+- Amount range checks (four 15-bit limbs per amount, radix 2^15, with carry-propagation conservation)
 - Credential verification: issuer, expiry, and Merkle inclusion checked inside the proof
 - Three depth-20 Merkle path verifications per transaction (2 note paths + 1 credential path)
-- ~45,000 trace columns
+- ~44,400 trace columns
 
 **Credential issuance circuit**
 - Derives issuer identity from private key via Poseidon2
@@ -72,21 +72,21 @@ The decision on which model to launch with will be made after further evaluation
 
 ## Performance
 
-Measured on AMD Ryzen 9 / release build (April 2, 2026). 10 iterations per circuit. Single-threaded, no batching, no recursion.
+Measured on AMD Ryzen 9 / release build (April 7, 2026). 10 iterations per circuit. Single-threaded, no batching, no recursion.
 
 | Circuit             | Prove (avg) | Prove (min) | Prove (max) | Verify (avg) |
 |---------------------|-------------|-------------|-------------|--------------|
-| Payment             |      847ms  |      831ms  |      872ms  |       113ms  |
-| Credential Issuance |      277ms  |      268ms  |      289ms  |   (combined) |
-| Time-Window Audit   |      286ms  |      274ms  |      301ms  |   (combined) |
-
-WASM (browser): ~300ms prove, ~20ms verify.
+| Payment             |      970ms  |      907ms  |     1034ms  |       119ms  |
+| Mode A Bundle       |     1058ms  |     1003ms  |     1122ms  |       119ms  |
+| Mode B Bundle       |     1661ms  |     1627ms  |     1702ms  |       191ms  |
+| Credential Issuance |      285ms  |      269ms  |      322ms  |   (combined) |
+| Time-Window Audit   |      291ms  |      281ms  |      313ms  |   (combined) |
 
 These improve significantly with recursive batching and multi-threading. See [benchmarks/](benchmarks/) for full details.
 
 ## Tests
 
-108 tests covering:
+110 tests covering:
 - Valid proof generation and verification for all three circuits
 - Balance conservation rejection (mismatched inputs/outputs)
 - Nullifier reuse rejection (double-spend prevention)
@@ -141,7 +141,8 @@ web/
 docs/
   architecture.md         Architecture decisions, system design, scaling path
 benchmarks/
-  BENCHMARK_REPORT_2026-04-02.md   Measured performance numbers
+  BENCHMARK_REPORT_2026-04-07.md   Latest benchmark run (multi-limb amounts)
+  BENCHMARK_REPORT_2026-04-02.md   Previous baseline
 ```
 
 ## Development

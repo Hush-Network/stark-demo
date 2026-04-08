@@ -12,7 +12,7 @@ rustup default nightly
 ## Development
 
 ```bash
-scripts/test.sh          # run tests (50 tests, requires --release)
+scripts/test.sh          # run tests (110 tests, requires --release)
 scripts/bench.sh         # run benchmarks
 scripts/fmt.sh           # format code
 cargo clippy -- -D warnings

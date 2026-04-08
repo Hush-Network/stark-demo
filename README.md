@@ -137,7 +137,8 @@ src/
 docs/
   architecture.md         Circuit architecture and proving notes
 benchmarks/
-  BENCHMARK_REPORT_2026-04-02.md  Latest benchmark run with measured, inferred, and target sections
+  BENCHMARK_REPORT_2026-04-07.md  Latest benchmark run with measured, inferred, and target sections
+  BENCHMARK_REPORT_2026-04-02.md  Previous baseline (pre-multi-limb)
 ```
 
 ## Development
@@ -164,7 +165,7 @@ This crate is the proving engine for Hush Network. It does not implement:
 - Note discovery
 - Consumer wallet flows beyond the browser demo
 
-See [docs/architecture.md](docs/architecture.md) for circuit architecture notes and [benchmarks/BENCHMARK_REPORT_2026-04-02.md](benchmarks/BENCHMARK_REPORT_2026-04-02.md) for the measured versus target breakdown.
+See [docs/architecture.md](docs/architecture.md) for circuit architecture notes and [benchmarks/BENCHMARK_REPORT_2026-04-07.md](benchmarks/BENCHMARK_REPORT_2026-04-07.md) for the measured versus target breakdown.
 
 ## Prior art
 
