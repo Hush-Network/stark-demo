@@ -388,6 +388,33 @@ export function prove_time_window_audit(window_start, window_end, amounts, times
 }
 
 /**
+ * Recompute tx_binding_hash from a JSON-encoded binding preimage.
+ * Returns `{"hash": <u32>}` on success or `{"error": "..."}` on failure.
+ * Uses a JSON interface instead of individual f64 parameters to avoid
+ * deepening the fragile JS-to-WASM numeric boundary.
+ * @param {string} binding_json
+ * @returns {string}
+ */
+export function recompute_tx_binding_hash_json(binding_json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(binding_json, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.recompute_tx_binding_hash_json(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        deferred2_0 = r0;
+        deferred2_1 = r1;
+        return getStringFromWasm0(r0, r1);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * Verify a serialized STARK proof against its public outputs.
  * proof_b64: base64-encoded JSON of the serialized StarkProof.
  * Returns a JS string: "ok" on success, error message on failure.

@@ -1,4 +1,4 @@
-import init, { verify_serialized_proof } from '../pkg/hush_demo_stark.js';
+import init, { verify_serialized_proof, recompute_tx_binding_hash_json } from '../pkg/hush_demo_stark.js';
 
 const input = document.getElementById('receipt-input');
 const btnVerify = document.getElementById('btn-verify');
@@ -30,6 +30,23 @@ if (stored) {
   tryVerify();
 }
 
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const ASSET_NAMES = { 1: 'USDC', 2: 'USDT', 3: 'HUSH' };
+
+function fmtBoundAmount(protocolUnits, scale) {
+  if (!scale || scale <= 0) return esc(String(protocolUnits)) + ' protocol units';
+  return '$' + (protocolUnits / scale).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+}
+
 async function verify() {
   resultEl.classList.remove('show');
 
@@ -41,8 +58,10 @@ async function verify() {
     return;
   }
 
-  if (!receipt.version || !receipt.tx_id || !receipt.proof) {
-    showError('Missing required fields (version, tx_id, proof).');
+  // Accept both old tx_id and new receipt_id
+  const receiptId = receipt.receipt_id || receipt.tx_id;
+  if (!receipt.version || !receiptId || !receipt.proof) {
+    showError('Missing required fields (version, receipt_id/tx_id, proof).');
     return;
   }
 
@@ -51,8 +70,37 @@ async function verify() {
     return;
   }
 
-  let verificationResult = null;
-  if (receipt.proof.proof_bytes && wasmReady) {
+  // --- Check 1: Binding hash recomputation ---
+  let bindingVerified = false;
+  let bindingError = null;
+  if (receipt.binding && wasmReady) {
+    try {
+      const result = JSON.parse(recompute_tx_binding_hash_json(JSON.stringify(receipt.binding)));
+      if (result.error) {
+        bindingError = result.error;
+      } else if (result.hash !== receipt.proof.tx_binding_hash) {
+        bindingError = `Binding hash mismatch: computed ${result.hash}, receipt claims ${receipt.proof.tx_binding_hash}`;
+      } else {
+        bindingVerified = true;
+      }
+    } catch (e) {
+      bindingError = 'Binding recomputation error: ' + e.message;
+    }
+  }
+
+  if (bindingError) {
+    banner.className = 'result-banner invalid';
+    banner.textContent = '\u2717 Verification failed: ' + bindingError;
+    body.innerHTML = '';
+    resultEl.classList.add('show');
+    return;
+  }
+
+  // --- Check 2: STARK proof verification ---
+  let starkVerified = false;
+  let starkError = null;
+  const hasProofBytes = !!receipt.proof.proof_bytes;
+  if (hasProofBytes && wasmReady) {
     try {
       const null_0 = parseInt(receipt.proof.null_0, 16);
       const null_1 = parseInt(receipt.proof.null_1, 16);
@@ -62,115 +110,125 @@ async function verify() {
       const note_root = receipt.proof.note_root || 0;
       const cred_root = receipt.proof.cred_root || 0;
       const epoch = receipt.proof.epoch || 0;
-
       const tx_binding_hash = receipt.proof.tx_binding_hash || 0;
       const sender_binding_tag = receipt.proof.sender_binding_tag || 0;
-      verificationResult = verify_serialized_proof(
+      const result = verify_serialized_proof(
         receipt.proof.proof_bytes,
         note_root, cred_root, epoch,
         null_0, null_1, out_cm_0, out_cm_1, cred_null,
         tx_binding_hash, sender_binding_tag
       );
+      if (result === 'ok') {
+        starkVerified = true;
+      } else {
+        starkError = result;
+      }
     } catch (e) {
-      verificationResult = 'error: ' + e.message;
+      starkError = e.message;
     }
   }
 
-  const verified = verificationResult === 'ok';
-  const hasProofBytes = !!receipt.proof.proof_bytes;
-
-  if (hasProofBytes && !verified) {
+  if (hasProofBytes && !starkVerified) {
     banner.className = 'result-banner invalid';
-    banner.textContent = '\u2717 STARK verification failed. ' + (verificationResult || 'Unknown error.');
+    banner.textContent = '\u2717 STARK verification failed. ' + (starkError || 'Unknown error.');
     body.innerHTML = '';
     resultEl.classList.add('show');
     return;
   }
 
-  if (verified) {
-    banner.className = 'result-banner valid';
-    banner.textContent = '\u2713 Payment proof verified. The proof bytes match the disclosed receipt.';
-  } else {
-    banner.className = 'result-banner partial';
-    banner.textContent = '\u2713 Receipt parsed. No proof bytes were attached, so this page can only show the disclosed fields.';
+  // --- Check 3: Display cross-check (soft, logged but not blocking) ---
+  const crossCheckNotes = [];
+  if (bindingVerified && receipt.amount != null && receipt.amt_scale) {
+    const expectedUnits = Math.round(receipt.amount * receipt.amt_scale);
+    if (expectedUnits !== receipt.binding.recipient_amount) {
+      crossCheckNotes.push(`Display amount (${receipt.amount}) does not match binding (${receipt.binding.recipient_amount} protocol units at scale ${receipt.amt_scale})`);
+    }
   }
 
+  // --- Set banner ---
+  if (bindingVerified && starkVerified) {
+    banner.className = 'result-banner valid';
+    banner.textContent = '\u2713 Proof valid. Bound fields verified.';
+  } else if (starkVerified && !receipt.binding) {
+    banner.className = 'result-banner partial';
+    banner.textContent = '\u2713 Proof bytes verified. Receipt fields are not independently bound.';
+  } else if (!hasProofBytes) {
+    banner.className = 'result-banner partial';
+    banner.textContent = 'Receipt parsed. No proof bytes attached.';
+  }
+
+  // --- Build result display ---
   const hidden = 'not disclosed';
+  const scale = receipt.amt_scale || 0;
+  let html = '';
 
-  const verifyRow = hasProofBytes
-    ? `<div class="result-row result-row-highlight">
-        <span class="result-label">Payment proof</span>
-        <span class="result-value result-verified">Cryptographically verified (${receipt.proof.verify_ms || '?'}ms)</span>
-      </div>`
-    : '';
+  // Verification status row
+  if (starkVerified) {
+    html += `<div class="result-row result-row-highlight">
+      <span class="result-label">STARK proof</span>
+      <span class="result-value result-verified">Verified (${esc(String(receipt.proof.verify_ms || '?'))}ms)</span>
+    </div>`;
+  }
+  if (bindingVerified) {
+    html += `<div class="result-row result-row-highlight">
+      <span class="result-label">Binding hash</span>
+      <span class="result-value result-verified">Recomputed and matched</span>
+    </div>`;
+  }
 
-  body.innerHTML = `
-    ${verifyRow}
-    <div class="result-row">
-      <span class="result-label">Transaction ID</span>
-      <span class="result-value">${receipt.tx_id}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">Recipient</span>
-      <span class="result-value">${receipt.recipient || hidden}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">Amount</span>
-      <span class="result-value">${receipt.amount ? receipt.amount.toLocaleString() + ' ' + (receipt.asset || '') : hidden}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">Network fee</span>
-      <span class="result-value">${receipt.fee ? receipt.fee.amount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' ' + receipt.fee.asset : hidden}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">Asset</span>
-      <span class="result-value">${receipt.asset || hidden}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">Timestamp</span>
-      <span class="result-value">${receipt.timestamp || hidden}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">Sender</span>
-      <span class="result-value">${receipt.sender || hidden}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">Sender Balance</span>
-      <span class="result-value">${receipt.sender_balance ? receipt.sender_balance.toLocaleString() : hidden}</span>
-    </div>
-    <div class="result-section">Proof Outputs</div>
-    <div class="result-row">
-      <span class="result-label">null_0</span>
-      <span class="result-value">${receipt.proof.null_0}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">null_1</span>
-      <span class="result-value">${receipt.proof.null_1}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">out_cm_0</span>
-      <span class="result-value">${receipt.proof.out_cm_0}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">out_cm_1</span>
-      <span class="result-value">${receipt.proof.out_cm_1}</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">cred_null</span>
-      <span class="result-value">${receipt.proof.cred_null}</span>
-    </div>
-    <div class="result-section">Performance</div>
-    <div class="result-row">
-      <span class="result-label">Prove</span>
-      <span class="result-value">${receipt.proof.prove_ms}ms</span>
-    </div>
-    <div class="result-row">
-      <span class="result-label">Verify</span>
-      <span class="result-value">${receipt.proof.verify_ms}ms</span>
-    </div>
-  `;
+  // Cross-check warnings
+  for (const note of crossCheckNotes) {
+    html += `<div class="result-row" style="color:#fbbf24">
+      <span class="result-label">Warning</span>
+      <span class="result-value">${esc(note)}</span>
+    </div>`;
+  }
 
+  // --- Section: Cryptographically bound fields ---
+  if (bindingVerified) {
+    html += '<div class="result-section">Cryptographically Bound (verified against proof)</div>';
+    html += row('Recipient amount', fmtBoundAmount(receipt.binding.recipient_amount, scale));
+    html += row('Payment asset', esc(ASSET_NAMES[receipt.binding.payment_asset] || String(receipt.binding.payment_asset)));
+    html += row('Fee amount', fmtBoundAmount(receipt.binding.fee_amount, scale));
+    html += row('Fee asset', esc(ASSET_NAMES[receipt.binding.fee_asset] || String(receipt.binding.fee_asset)));
+    html += row('Change amount', fmtBoundAmount(receipt.binding.sender_change_amount, scale));
+  }
+
+  // --- Section: Disclosed metadata (not verified) ---
+  html += '<div class="result-section">Disclosed Metadata (not cryptographically verified)</div>';
+  html += row('Receipt ID', esc(receiptId));
+  html += row('Recipient', esc(receipt.recipient) || hidden);
+  if (receipt.amount != null) {
+    html += row('Display amount', esc(receipt.amount.toLocaleString()) + ' ' + esc(receipt.asset || ''));
+  }
+  html += row('Timestamp', esc(receipt.timestamp) || hidden);
+  html += row('Sender', esc(receipt.sender) || hidden);
+  if (receipt.sender_balance != null) {
+    html += row('Sender balance', esc(receipt.sender_balance.toLocaleString()));
+  }
+
+  // --- Section: Proof outputs ---
+  html += '<div class="result-section">Proof Outputs</div>';
+  html += row('null_0', esc(receipt.proof.null_0));
+  html += row('null_1', esc(receipt.proof.null_1));
+  html += row('out_cm_0', esc(receipt.proof.out_cm_0));
+  html += row('out_cm_1', esc(receipt.proof.out_cm_1));
+  html += row('cred_null', esc(receipt.proof.cred_null));
+
+  // --- Section: Performance ---
+  html += '<div class="result-section">Performance</div>';
+  html += row('Prove', esc(String(receipt.proof.prove_ms)) + 'ms');
+  html += row('Verify', esc(String(receipt.proof.verify_ms)) + 'ms');
+
+  body.innerHTML = html;
   resultEl.classList.add('show');
+}
+
+function row(label, value) {
+  return `<div class="result-row">
+    <span class="result-label">${esc(label)}</span>
+    <span class="result-value">${value}</span>
+  </div>`;
 }
 
 function showError(msg) {

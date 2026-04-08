@@ -2,29 +2,43 @@
 
 [![CI](https://github.com/Hush-Network/stark-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/Hush-Network/stark-demo/actions/workflows/ci.yml)
 
-This repository contains the proving engine, fee model runtime, benchmark suite, and browser demo that power [demo.hushnetwork.io](https://demo.hushnetwork.io). It is not a full validator or network implementation — consensus, node software, mempool encryption, and the wallet SDK are separate work.
+**[Try it live at demo.hushnetwork.io](https://demo.hushnetwork.io)**
 
-Hush Network is building credential-gated private stablecoin settlement on a purpose-built L1. This repository contains the STARK circuits that enforce it: real zero-knowledge proofs over Mersenne31, no trusted setup, running live in the browser. Every transaction proves ownership, balance conservation, and credential validity without revealing sender, receiver, or amount.
+This repository contains the STARK proving engine behind the Hush browser demo. It proves the core payment, credential issuance, and time-window audit circuits over Mersenne31 with no trusted setup. It does not prove a live network.
 
 Built on [Stwo](https://github.com/starkware-libs/stwo) (FRI-based STARK prover, Mersenne31 field) with Poseidon2 as the in-circuit hash.
 
-**[Try it live](https://demo.hushnetwork.io)** — browser-based STARK proving, no backend required.
+## Relationship to the product demo
 
-## Implementation state
+The live demo shows the intended Hush wallet experience under the fee model being designed: the sender sees amount, fee, and total in the payment asset while the receiver gets the full amount.
 
-| Component | State |
-|-----------|-------|
-| Payment STARK circuit (2-in-2-out, credential-gated) | Live in browser demo |
-| Credential issuance circuit | Live in browser demo |
-| Time-window audit circuit | Live in browser demo |
-| Fee accounting, epoch accrual, validator payout | Implemented, runtime-level |
-| HUSH-only fee path | Implemented, circuit and runtime |
-| Dual-payment fee path (stablecoin fee) | Implemented, runtime-level; fee extraction not yet in circuit |
-| Recursive proof aggregation | Specified, not built |
-| HotStuff-2 consensus | Designed, not built |
-| Note discovery (FMD) | Specified, not built |
-| Threshold encrypted mempool | Specified, not built |
-| Wallet SDK | Not started |
+This repository does not implement that fee-routing model. It provides the proof engine underneath the demo: payment validity, credential checks, audit proofs, and receipt verification.
+
+## Status boundary
+
+**Implemented**
+- Payment, credential issuance, and time-window audit circuits
+- Browser WASM bindings used by the live demo
+- Proof generation and proof verification for the payment circuit
+- Test suite for circuit correctness
+
+**Benchmarked**
+- Native prove and verify timings for all three circuits
+- Browser WASM timings for the payment circuit
+- Trace layout and circuit size estimates
+
+**Target-state**
+- Recursive proof aggregation
+- HotStuff-2 BFT consensus
+- Threshold-encrypted mempool
+- Structured note discovery
+- Full revocation path
+
+**Not implemented**
+- Live validator network
+- Protocol fee extraction
+- Validator incentives
+- Production wallet SDK
 
 ## What each circuit proves
 
@@ -40,7 +54,7 @@ Three STARK circuits on Stwo over Mersenne31, with full Poseidon2 AIR constraint
 
 **Payment circuit** (2-in-2-out credential-gated transfers)
 - Note consumption and creation with nullifier/commitment pairs
-- Balance conservation enforced in-circuit (supports both HUSH-only and dual-payment fee paths)
+- Balance conservation enforced in-circuit
 - Nullifier inequality check (prevents double-spend)
 - Amount range checks (four 15-bit limbs per amount, radix 2^15, with carry-propagation conservation)
 - Credential verification: issuer, expiry, and Merkle inclusion checked inside the proof
@@ -60,19 +74,15 @@ Three STARK circuits on Stwo over Mersenne31, with full Poseidon2 AIR constraint
 - Credential verification with expiry range check
 - Merkle inclusion for credential set
 
-## Fee models
+## What the payment circuit proves
 
-Two fee models are implemented and under evaluation. Both are functional and the architecture supports toggling between them at the protocol level.
+Owner derivation, input/output note commitments, Merkle inclusion (2 note paths + 1 credential path), nullifier derivation and uniqueness, balance conservation, credential validity (commitment + expiry range check + Merkle inclusion), and credential nullifier binding.
 
-**HUSH-only gas model:** All transaction fees are denominated in HUSH, the native protocol token. This is the industry-default approach for L1 networks. Implemented at the circuit and runtime level.
-
-**Dual-payment fee model:** Transaction fees can be paid in the same stablecoin being transacted, or optionally in HUSH. The sender pays amount plus fee; the receiver gets the exact intended amount. Fee accounting, epoch accrual, and validator payout are handled by `dual_fee_runtime.rs` and `accounting.rs`. The runtime logic is complete; fee extraction is not yet enforced at the circuit constraint level.
-
-The decision on which model to launch with will be made after further evaluation and investor input. Both paths are actively maintained.
+Public outputs bound via Fiat-Shamir: nullifiers, output commitments, credential nullifier. Everything a validator would need to update ledger state.
 
 ## Performance
 
-Measured on AMD Ryzen 9 / release build (April 7, 2026). 10 iterations per circuit. Single-threaded, no batching, no recursion.
+Measured on AMD Ryzen 9 / release build. 10 iterations per circuit. Single-threaded, no batching, no recursion.
 
 | Circuit             | Prove (avg) | Prove (min) | Prove (max) | Verify (avg) |
 |---------------------|-------------|-------------|-------------|--------------|
@@ -82,7 +92,9 @@ Measured on AMD Ryzen 9 / release build (April 7, 2026). 10 iterations per circu
 | Credential Issuance |      285ms  |      269ms  |      322ms  |   (combined) |
 | Time-Window Audit   |      291ms  |      281ms  |      313ms  |   (combined) |
 
-These improve significantly with recursive batching and multi-threading. See [benchmarks/](benchmarks/) for full details.
+Native: AMD Ryzen 9, release build, April 7 2026. Mode A = same-asset fee. Mode B = HUSH sidecar fee (payment + fee sidecar proofs). Accounting, epoch accrual, and payout generation run in sub-microsecond time and are not shown.
+
+Recursive batching and multi-threading are target-state optimizations, not measured here. See [benchmarks/](benchmarks/) for the full breakdown.
 
 ## Tests
 
@@ -96,8 +108,6 @@ These improve significantly with recursive batching and multi-threading. See [be
 - Mismatched audit total rejection
 - Poseidon2 AIR correctness (output verification, column count validation)
 - Owner derivation consistency
-- Fee model accounting (both HUSH-only and dual-payment paths)
-- Payment transaction validation and fixtures
 
 ## Cryptographic stack
 
@@ -107,48 +117,34 @@ These improve significantly with recursive batching and multi-threading. See [be
 | Prover | Stwo | Fastest production STARK prover, Rust, open source |
 | Field | Mersenne31 (M31) | Native to Stwo, fast field arithmetic |
 | In-circuit hash | Poseidon2 (width-16, Plonky3 constants) | STARK-optimized, efficient over M31 |
-| Commitment backend | Poseidon252 (native) / Blake2s (WASM) | |
-| Domain separation | 9 domains (owner, nullifier, note, credential, Merkle, tx binding, sender binding) | Prevents cross-context hash collisions |
+| Commitment backend | Poseidon252 (native) / Blake2s (WASM) | Native build stays algebraic; WASM uses a compatible fallback |
 
 ## Repository structure
 
 ```
 src/
-  circuit.rs              Payment circuit (2-in-2-out, fee-aware)
+  circuit.rs              Payment circuit (2-in-2-out)
   credential_issuance.rs  Credential issuance circuit
   time_window.rs          Time-window audit circuit
-  poseidon2.rs            Poseidon2 hash (M31, width-16, 9 domains)
+  poseidon2.rs            Poseidon2 hash (M31, width-16, domain-separated)
   poseidon2_air.rs        Poseidon2 AIR constraints
-  types.rs                Witness types (payment, credential, fee)
-  wasm.rs                 WASM bindings (proof exports + browser demo interface)
+  types.rs                Witness types
+  wasm.rs                 WASM bindings (compiled to power the browser demo)
   prover_common.rs        Shared prover utilities
-  dual_fee_runtime.rs     Dual-payment fee model runtime
-  accounting.rs           Fee accounting, epoch accrual, validator payout
-  fee_sidecar.rs          HUSH fee sidecar proof construction
-  payment_tx.rs           Payment transaction builder and binding
-  payment_validation.rs   Transaction validation logic
-  payment_fixtures.rs     Test fixtures for payment flows
-  measurement.rs          Timing utilities (platform-agnostic, native + WASM)
   bin/
     bench.rs              Benchmark suite
     lifecycle.rs          Full protocol flow demo
-web/
-  index.html              Demo frontend (deployed to demo.hushnetwork.io)
-  verify.html             Proof verification page
-  src/main.js             Demo wallet UI
-  src/verify.js           Verification UI
-  vite.config.js          Vite build config
 docs/
-  architecture.md         Architecture decisions, system design, scaling path
+  architecture.md         Circuit architecture and proving notes
 benchmarks/
-  BENCHMARK_REPORT_2026-04-07.md   Latest benchmark run (multi-limb amounts)
-  BENCHMARK_REPORT_2026-04-02.md   Previous baseline
+  BENCHMARK_REPORT_2026-04-07.md  Latest benchmark run with measured, inferred, and target sections
+  BENCHMARK_REPORT_2026-04-02.md  Previous baseline (pre-multi-limb)
 ```
 
 ## Development
 
 ```bash
-scripts/test.sh     # run tests
+scripts/test.sh     # run tests (110 tests)
 scripts/bench.sh    # benchmarks
 scripts/fmt.sh      # format
 cargo clippy -- -D warnings
@@ -159,26 +155,22 @@ cargo run --bin lifecycle --release   # full protocol flow demo
 cargo run --bin bench --release       # performance benchmarks
 ```
 
-### WASM build
+## Scope notes
 
-```bash
-wasm-pack build --target web --out-dir web/pkg
-```
+This crate is the proving engine for Hush Network. It does not implement:
 
-### Web frontend
+- Consensus
+- Fee extraction
+- Validator incentives
+- Note discovery
+- Consumer wallet flows beyond the browser demo
 
-```bash
-cd web && npm install && npx vite build
-```
-
-## Status
-
-This is the proving engine and fee model runtime for Hush Network. Circuits are functional, tested, and running live in the browser. What is not yet built: recursive proof aggregation, consensus, note discovery, mempool encryption, and the wallet SDK. See the implementation state table above and [docs/architecture.md](docs/architecture.md) for the full picture.
+See [docs/architecture.md](docs/architecture.md) for circuit architecture notes and [benchmarks/BENCHMARK_REPORT_2026-04-07.md](benchmarks/BENCHMARK_REPORT_2026-04-07.md) for the measured versus target breakdown.
 
 ## Prior art
 
 - **Zcash** (Sapling/Orchard): note model, nullifier design, selective disclosure lineage
-- **Penumbra**: shielded UTXO model, credential-gated participation concepts
+- **Penumbra**: shielded UTXO model, private eligibility-gating concepts
 - **Aztec**: private execution model, compliance integration patterns
 - **Stwo** (StarkWare): prover architecture, FRI over Mersenne31
 - **Poseidon2** (Grassi et al.): STARK-friendly hash construction

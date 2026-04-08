@@ -59,6 +59,14 @@ export function prove_and_verify(epoch: number, note_root: number, cred_root: nu
 export function prove_time_window_audit(window_start: number, window_end: number, amounts: Uint32Array, timestamps: Uint32Array, sk: number, cred_issuer: number, cred_expiry: number, cred_secret: number): AuditOutput;
 
 /**
+ * Recompute tx_binding_hash from a JSON-encoded binding preimage.
+ * Returns `{"hash": <u32>}` on success or `{"error": "..."}` on failure.
+ * Uses a JSON interface instead of individual f64 parameters to avoid
+ * deepening the fragile JS-to-WASM numeric boundary.
+ */
+export function recompute_tx_binding_hash_json(binding_json: string): string;
+
+/**
  * Verify a serialized STARK proof against its public outputs.
  * proof_b64: base64-encoded JSON of the serialized StarkProof.
  * Returns a JS string: "ok" on success, error message on failure.
@@ -86,6 +94,7 @@ export interface InitOutput {
     readonly proofoutput_cred_root: (a: number) => number;
     readonly proofoutput_epoch: (a: number) => number;
     readonly dual_fee_review_json: (a: number) => void;
+    readonly recompute_tx_binding_hash_json: (a: number, b: number, c: number) => void;
     readonly dual_fee_quote_payment_json: (a: number, b: number, c: number, d: number) => void;
     readonly dual_fee_submit_demo_payment_json: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly prove_and_verify: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => number;

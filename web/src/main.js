@@ -13,6 +13,16 @@ const CRED_ISSUER = 1;
 const CRED_EXPIRY = 50_000;
 const CRED_SECRET = 777;
 
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const DEFAULT_SETUP_METHOD = 'Device key';
 const DEFAULT_RECIPIENT = 'Meridian Labs';
 const DEFAULT_AMOUNT = '125,000.00';
@@ -251,7 +261,7 @@ function credentialDescription() {
   return 'The wallet can generate a payment proof because the credential is active and eligible for network participation.';
 }
 
-function createTxId() {
+function createReceiptId() {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
@@ -377,11 +387,11 @@ function renderStage() {
             <div class="send-form-column">
               <div class="field">
                 <label for="recipient-input">Recipient</label>
-                <input id="recipient-input" type="text" value="${state.currentRecipient}" placeholder="Recipient name or wallet reference" oninput="updateRecipient(this.value)">
+                <input id="recipient-input" type="text" value="${esc(state.currentRecipient)}" placeholder="Recipient name or wallet reference" oninput="updateRecipient(this.value)">
               </div>
               <div class="field">
                 <label for="amount-input">Amount</label>
-                <input id="amount-input" type="text" value="${state.currentAmountInput}" inputmode="decimal" placeholder="0.00" oninput="updateAmount(this.value)">
+                <input id="amount-input" type="text" value="${esc(state.currentAmountInput)}" inputmode="decimal" placeholder="0.00" oninput="updateAmount(this.value)">
               </div>
             </div>
             <div class="send-summary-panel">
@@ -442,19 +452,19 @@ function renderActivity() {
   return state.activity.map((item) => {
     const meta = [];
     const badgeClass = item.kind === 'payment' ? 'payment' : item.kind === 'audit' ? 'audit' : 'system';
-    if (item.asset) meta.push(`${fmtMoney(item.amount)} ${item.asset}`);
-    if (item.feeAmount != null) meta.push(`fee ${fmtFee(item.feeAmount)} ${item.feeAsset}`);
-    if (item.kind === 'payment') meta.push('<a class="activity-link" onclick="showReceipt(\'' + item.id + '\')">Receipt</a>');
+    if (item.asset) meta.push(`${esc(fmtMoney(item.amount))} ${esc(item.asset)}`);
+    if (item.feeAmount != null) meta.push(`fee ${esc(fmtFee(item.feeAmount))} ${esc(item.feeAsset)}`);
+    if (item.kind === 'payment') meta.push('<a class="activity-link" onclick="showReceipt(\'' + esc(item.id) + '\')">Receipt</a>');
     if (item.kind === 'audit') meta.push('<a class="activity-link" onclick="renderAuditResult(); document.getElementById(\'audit-overlay\').classList.add(\'show\')">View proof</a>');
     return `
       <div class="activity-item">
-        <div class="activity-badge ${badgeClass}">${item.icon}</div>
+        <div class="activity-badge ${esc(badgeClass)}">${esc(item.icon)}</div>
         <div class="activity-main">
           <div class="activity-title-row">
-            <div class="activity-title">${item.title}</div>
-            <div class="activity-time">${relativeTime(item.time)}</div>
+            <div class="activity-title">${esc(item.title)}</div>
+            <div class="activity-time">${esc(relativeTime(item.time))}</div>
           </div>
-          <div class="activity-copy">${item.copy}</div>
+          <div class="activity-copy">${esc(item.copy)}</div>
           <div class="activity-meta">${meta.join('<span>•</span>')}</div>
         </div>
       </div>
@@ -825,7 +835,7 @@ async function sendPayment() {
       state.hushBalance -= hushDebit;
     }
 
-    const txId = createTxId();
+    const txId = createReceiptId();
     const tx = {
       id: txId,
       recipient,
@@ -835,9 +845,11 @@ async function sendPayment() {
       feeAsset: currentFeeAsset(),
       totalDebited: currentTotalLabel(quote),
       time: new Date(),
+      unixTimestamp: Math.floor(Date.now() / 1000),
       receipt: {
-        version: 1,
-        tx_id: txId,
+        version: 2,
+        receipt_id: txId,
+        amt_scale: AMT_SCALE,
         timestamp: new Date().toISOString(),
         recipient,
         asset: state.activeAsset,
@@ -856,6 +868,19 @@ async function sendPayment() {
           epoch: paymentProof.epoch,
           tx_binding_hash: paymentProof.tx_binding_hash,
           sender_binding_tag: paymentProof.sender_binding_tag,
+        },
+        binding: {
+          replay_domain: result.tx.descriptor.replay_domain,
+          payment_asset: result.tx.descriptor.payment_asset,
+          fee_asset: result.tx.descriptor.fee_asset,
+          fee_class: result.tx.descriptor.fee_class,
+          fee_amount: result.tx.descriptor.fee_amount,
+          fee_schedule_version: result.tx.descriptor.fee_schedule_version,
+          recipient_amount: result.tx.recipient.amount,
+          recipient_owner: result.tx.recipient.owner,
+          recipient_randomness: result.tx.recipient.randomness,
+          sender_change_amount: result.tx.sender_change.amount,
+          sender_change_randomness: result.tx.sender_change.randomness,
         },
       },
     };
@@ -901,9 +926,11 @@ function buildReceiptPayload(txId) {
   if (!tx) return null;
 
   const receipt = {
-    version: 1,
-    tx_id: tx.receipt.tx_id,
+    version: 2,
+    receipt_id: tx.receipt.receipt_id,
+    amt_scale: AMT_SCALE,
     proof: tx.receipt.proof,
+    binding: tx.receipt.binding,
     fee: { amount: tx.feeAmount, asset: tx.feeAsset },
   };
 
@@ -937,13 +964,13 @@ function openSuccessOverlay(txId) {
       <button class="close-button" onclick="closeOverlay('success-overlay')">×</button>
     </div>
     <div class="success-summary">
-      <div class="success-row"><span>Recipient</span><span>${tx.recipient}</span></div>
-      <div class="success-row"><span>Amount</span><span>${fmtMoney(tx.amount)} ${tx.asset}</span></div>
-      <div class="success-row"><span>Network fee</span><span>${fmtFee(tx.feeAmount)} ${tx.feeAsset}</span></div>
-      <div class="success-row"><span>Total debited</span><span>${tx.totalDebited}</span></div>
+      <div class="success-row"><span>Recipient</span><span>${esc(tx.recipient)}</span></div>
+      <div class="success-row"><span>Amount</span><span>${esc(fmtMoney(tx.amount))} ${esc(tx.asset)}</span></div>
+      <div class="success-row"><span>Network fee</span><span>${esc(fmtFee(tx.feeAmount))} ${esc(tx.feeAsset)}</span></div>
+      <div class="success-row"><span>Total debited</span><span>${esc(tx.totalDebited)}</span></div>
     </div>
     <div class="modal-actions">
-      <button class="button-primary" onclick="openReceiptFromSuccess('${tx.id}')">View receipt</button>
+      <button class="button-primary" onclick="openReceiptFromSuccess('${esc(tx.id)}')">View receipt</button>
       <button class="button-secondary" onclick="scrollFromSuccess()">Open technical details</button>
     </div>
   `;
@@ -994,10 +1021,10 @@ window.showReceipt = function showReceipt(txId) {
 
 function renderReceiptRow(field, label, value, checked) {
   return `
-    <div class="receipt-row" data-field="${field}">
+    <div class="receipt-row" data-field="${esc(field)}">
       <input type="checkbox" ${checked ? 'checked' : ''}>
-      <div class="receipt-label">${label}</div>
-      <div class="receipt-value">${value}</div>
+      <div class="receipt-label">${esc(label)}</div>
+      <div class="receipt-value">${esc(value)}</div>
     </div>
   `;
 }
@@ -1169,18 +1196,19 @@ function renderAuditResult() {
       <div>
         <h3 class="modal-title">Audit summary ready</h3>
         <p class="modal-copy">The proof covers the selected payment window. The summary below shows only the fields chosen for disclosure.</p>
+        <p class="modal-copy" style="opacity:0.6;font-size:13px">A ZK proof was generated and verified locally. Standalone proof export is not yet implemented.</p>
       </div>
       <button class="close-button" onclick="closeOverlay('audit-overlay')">×</button>
     </div>
     <div class="audit-result-block">
       <div class="audit-result-card">
         <h4>Disclosed</h4>
-        ${disclosed.map(([label, value]) => `<div class="audit-result-row"><span>${label}</span><span>${value}</span></div>`).join('')}
-        <div class="audit-result-row"><span>Proof time</span><span>${result.proveMs.toFixed(0)}ms</span></div>
+        ${disclosed.map(([label, value]) => `<div class="audit-result-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('')}
+        <div class="audit-result-row"><span>Proof time</span><span>${esc(result.proveMs.toFixed(0))}ms</span></div>
       </div>
       <div class="audit-result-card">
         <h4>Still private</h4>
-        ${hidden.map((label) => `<div class="audit-result-row"><span>${label}</span><span>Hidden</span></div>`).join('')}
+        ${hidden.map((label) => `<div class="audit-result-row"><span>${esc(label)}</span><span>Hidden</span></div>`).join('')}
       </div>
     </div>
     <div class="modal-actions">
@@ -1194,12 +1222,18 @@ function renderAuditResult() {
 window.copyAuditProof = async function copyAuditProof() {
   if (!state.auditResult) return;
   const payload = JSON.stringify({
-    type: 'hush-audit-proof',
+    type: 'hush-audit-disclosure',
+    version: 1,
     asset: state.activeAsset,
+    proof_artifact: null,
+    proof_note: 'Proof was generated and verified internally. Standalone export not yet implemented.',
+    prove_ms: state.auditResult.proveMs,
+    window: {
+      start_date: state.auditResult.startDate,
+      end_date: state.auditResult.endDate,
+    },
     total_volume: state.auditResult.totalVolume,
     tx_count: state.auditResult.txs.length,
-    period: { start: state.auditResult.startDate, end: state.auditResult.endDate },
-    prove_ms: state.auditResult.proveMs,
     disclosed: state.auditResult.selected,
   }, null, 2);
   try {

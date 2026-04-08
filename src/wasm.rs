@@ -1,6 +1,6 @@
 //! WASM bindings for browser proving.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
@@ -172,6 +172,51 @@ pub fn dual_fee_review_json() -> String {
         "data": dual_fee_review_snapshot(),
     })
     .to_string()
+}
+
+/// Binding preimage for tx_binding_hash recomputation.
+/// Amounts are u64 (parsed from JSON numbers by serde).
+#[derive(Deserialize)]
+struct BindingPreimage {
+    replay_domain: u32,
+    payment_asset: u32,
+    fee_asset: u32,
+    fee_class: u32,
+    fee_amount: u64,
+    fee_schedule_version: u32,
+    recipient_amount: u64,
+    recipient_owner: u32,
+    recipient_randomness: u32,
+    sender_change_amount: u64,
+    sender_change_randomness: u32,
+}
+
+/// Recompute tx_binding_hash from a JSON-encoded binding preimage.
+/// Returns `{"hash": <u32>}` on success or `{"error": "..."}` on failure.
+/// Uses a JSON interface instead of individual f64 parameters to avoid
+/// deepening the fragile JS-to-WASM numeric boundary.
+#[wasm_bindgen]
+pub fn recompute_tx_binding_hash_json(binding_json: &str) -> String {
+    let b: BindingPreimage = match serde_json::from_str(binding_json) {
+        Ok(v) => v,
+        Err(e) => {
+            return serde_json::json!({ "error": format!("invalid binding JSON: {e}") }).to_string()
+        }
+    };
+    let hash = compute_mode_a_tx_binding_hash(
+        b.replay_domain,
+        b.payment_asset,
+        b.fee_asset,
+        b.fee_class,
+        b.fee_amount,
+        b.fee_schedule_version,
+        b.recipient_amount,
+        b.recipient_owner,
+        b.recipient_randomness,
+        b.sender_change_amount,
+        b.sender_change_randomness,
+    );
+    serde_json::json!({ "hash": hash }).to_string()
 }
 
 #[wasm_bindgen]

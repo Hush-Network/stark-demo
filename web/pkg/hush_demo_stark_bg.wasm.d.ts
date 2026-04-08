@@ -16,6 +16,7 @@ export const proofoutput_note_root: (a: number) => number;
 export const proofoutput_cred_root: (a: number) => number;
 export const proofoutput_epoch: (a: number) => number;
 export const dual_fee_review_json: (a: number) => void;
+export const recompute_tx_binding_hash_json: (a: number, b: number, c: number) => void;
 export const dual_fee_quote_payment_json: (a: number, b: number, c: number, d: number) => void;
 export const dual_fee_submit_demo_payment_json: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
 export const prove_and_verify: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => number;
