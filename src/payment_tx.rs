@@ -8,8 +8,10 @@ use crate::{
 
 pub const PAYMENT_TX_V1_VERSION: u32 = 1;
 pub const PAYMENT_TX_V1_REPLAY_DOMAIN: u32 = 1;
-pub const PAYMENT_STANDARD_FEE_SCHEDULE_VERSION: u32 = 1;
-pub const PAYMENT_STANDARD_FEE_AMOUNT: u64 = 50;
+pub const PAYMENT_FEE_SCHEDULE_STANDARD: u32 = 1;
+pub const PAYMENT_FEE_SCHEDULE_BUSY: u32 = 2;
+pub const PAYMENT_FEE_SCHEDULE_PEAK: u32 = 3;
+pub const PAYMENT_STANDARD_FEE_SCHEDULE_VERSION: u32 = PAYMENT_FEE_SCHEDULE_STANDARD;
 pub const FEE_CLASS_PAYMENT_STANDARD: u32 = 1;
 pub const FEE_AUX_ROUTE_HUSH_SIDECAR: u32 = 1;
 
@@ -168,6 +170,24 @@ impl PaymentTxV1 {
         sender_change_randomness: u32,
         sk: u32,
     ) -> Result<Self, String> {
+        Self::build_same_asset_with_schedule(
+            payment_asset,
+            inputs,
+            recipient,
+            sender_change_randomness,
+            sk,
+            PAYMENT_FEE_SCHEDULE_STANDARD,
+        )
+    }
+
+    pub fn build_same_asset_with_schedule(
+        payment_asset: AssetId,
+        inputs: [NoteInput; 2],
+        recipient: RecipientIntent,
+        sender_change_randomness: u32,
+        sk: u32,
+        fee_schedule_version: u32,
+    ) -> Result<Self, String> {
         Self::build_for_route(
             PaymentRoute::SameAsset,
             payment_asset,
@@ -175,6 +195,7 @@ impl PaymentTxV1 {
             recipient,
             sender_change_randomness,
             sk,
+            fee_schedule_version,
         )
     }
 
@@ -185,6 +206,24 @@ impl PaymentTxV1 {
         sender_change_randomness: u32,
         sk: u32,
     ) -> Result<Self, String> {
+        Self::build_with_hush_fee_with_schedule(
+            payment_asset,
+            inputs,
+            recipient,
+            sender_change_randomness,
+            sk,
+            PAYMENT_FEE_SCHEDULE_STANDARD,
+        )
+    }
+
+    pub fn build_with_hush_fee_with_schedule(
+        payment_asset: AssetId,
+        inputs: [NoteInput; 2],
+        recipient: RecipientIntent,
+        sender_change_randomness: u32,
+        sk: u32,
+        fee_schedule_version: u32,
+    ) -> Result<Self, String> {
         Self::build_for_route(
             PaymentRoute::HushSidecar,
             payment_asset,
@@ -192,6 +231,7 @@ impl PaymentTxV1 {
             recipient,
             sender_change_randomness,
             sk,
+            fee_schedule_version,
         )
     }
 
@@ -202,12 +242,14 @@ impl PaymentTxV1 {
         recipient: RecipientIntent,
         sender_change_randomness: u32,
         sk: u32,
+        fee_schedule_version: u32,
     ) -> Result<Self, String> {
         let fee_asset = match route {
             PaymentRoute::SameAsset => payment_asset,
             PaymentRoute::HushSidecar => AssetId::Hush,
         };
-        let fee_amount = expected_fee_amount(payment_asset.as_u32(), fee_asset.as_u32())?;
+        let fee_amount =
+            expected_fee_amount(payment_asset.as_u32(), fee_asset.as_u32(), fee_schedule_version)?;
         let total_in = inputs[0]
             .amount
             .checked_add(inputs[1].amount)
@@ -230,7 +272,7 @@ impl PaymentTxV1 {
             fee_asset: fee_asset.as_u32(),
             fee_class: FEE_CLASS_PAYMENT_STANDARD,
             fee_amount,
-            fee_schedule_version: PAYMENT_STANDARD_FEE_SCHEDULE_VERSION,
+            fee_schedule_version,
             replay_domain: PAYMENT_TX_V1_REPLAY_DOMAIN,
         };
         let sender_change = SenderChangeIntent {
@@ -301,6 +343,7 @@ impl PaymentTxV1 {
             binding_fee_asset: self.descriptor.fee_asset,
             fee_amount: self.descriptor.fee_amount,
             fee_class: self.descriptor.fee_class,
+            fee_schedule_version: self.descriptor.fee_schedule_version,
             replay_domain: self.descriptor.replay_domain,
             tx_binding_hash: self.tx_binding_hash,
             sender_binding_tag: self.attachment.sender_binding_tag,
@@ -425,9 +468,25 @@ pub fn is_hush_only_action(tx_kind: u32) -> Result<bool, String> {
     ))
 }
 
-pub fn expected_fee_amount(payment_asset: u32, fee_asset: u32) -> Result<u64, String> {
+pub fn expected_fee_amount(
+    payment_asset: u32,
+    fee_asset: u32,
+    fee_schedule_version: u32,
+) -> Result<u64, String> {
     validate_tx_kind_fee_asset_policy(TX_KIND_PAYMENT, Some(payment_asset), fee_asset)?;
-    Ok(PAYMENT_STANDARD_FEE_AMOUNT)
+    let route = payment_route(payment_asset, fee_asset)?;
+    match (route, fee_schedule_version) {
+        (PaymentRoute::SameAsset, PAYMENT_FEE_SCHEDULE_STANDARD) => Ok(50),
+        (PaymentRoute::SameAsset, PAYMENT_FEE_SCHEDULE_BUSY) => Ok(125),
+        (PaymentRoute::SameAsset, PAYMENT_FEE_SCHEDULE_PEAK) => Ok(300),
+        (PaymentRoute::HushSidecar, PAYMENT_FEE_SCHEDULE_STANDARD) => Ok(50),
+        (PaymentRoute::HushSidecar, PAYMENT_FEE_SCHEDULE_BUSY) => Ok(125),
+        (PaymentRoute::HushSidecar, PAYMENT_FEE_SCHEDULE_PEAK) => Ok(300),
+        _ => Err(format!(
+            "unsupported payment fee schedule version {}",
+            fee_schedule_version
+        )),
+    }
 }
 
 pub fn compute_tx_binding_hash(tx: &PaymentTxV1) -> [u32; 4] {
@@ -533,7 +592,10 @@ pub fn validate_payment_tx(tx: &PaymentTxV1) -> Result<PaymentRoute, String> {
     if tx.descriptor.fee_class != FEE_CLASS_PAYMENT_STANDARD {
         return Err(format!("unsupported fee_class {}", tx.descriptor.fee_class));
     }
-    if tx.descriptor.fee_schedule_version != PAYMENT_STANDARD_FEE_SCHEDULE_VERSION {
+    if !matches!(
+        tx.descriptor.fee_schedule_version,
+        PAYMENT_FEE_SCHEDULE_STANDARD | PAYMENT_FEE_SCHEDULE_BUSY | PAYMENT_FEE_SCHEDULE_PEAK
+    ) {
         return Err(format!(
             "unsupported fee_schedule_version {}",
             tx.descriptor.fee_schedule_version
@@ -544,7 +606,11 @@ pub fn validate_payment_tx(tx: &PaymentTxV1) -> Result<PaymentRoute, String> {
     }
 
     let route = payment_route(tx.descriptor.payment_asset, tx.descriptor.fee_asset)?;
-    let expected_fee = expected_fee_amount(tx.descriptor.payment_asset, tx.descriptor.fee_asset)?;
+    let expected_fee = expected_fee_amount(
+        tx.descriptor.payment_asset,
+        tx.descriptor.fee_asset,
+        tx.descriptor.fee_schedule_version,
+    )?;
     if tx.descriptor.fee_amount != expected_fee {
         return Err(format!(
             "fee amount mismatch: got {}, expected {}",
@@ -627,7 +693,8 @@ mod tests {
         let tx = sample_same_asset_tx(AssetId::Usdc);
         assert_eq!(tx.descriptor.payment_asset, AssetId::Usdc as u32);
         assert_eq!(tx.descriptor.fee_asset, AssetId::Usdc as u32);
-        assert_eq!(tx.descriptor.fee_amount, PAYMENT_STANDARD_FEE_AMOUNT);
+        assert_eq!(tx.descriptor.fee_amount, 50);
+        assert_eq!(tx.descriptor.fee_schedule_version, PAYMENT_FEE_SCHEDULE_STANDARD);
         assert_eq!(tx.sender_change.amount, 1_950);
         assert!(tx.attachment.fee_aux.is_none());
         validate_payment_tx(&tx).expect("builder output should validate");

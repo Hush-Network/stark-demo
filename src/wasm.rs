@@ -28,18 +28,20 @@ fn validate_f64_amount(v: f64, name: &str) -> Result<u64, String> {
     Ok(v as u64)
 }
 
-/// Generate a pseudo-random u32 in [1, 2^31 - 1] (valid M31 range) using Math.random().
-/// This is NOT cryptographically secure and exists only for the browser demo to avoid
-/// deterministic, reusable randomness values. Production wallets MUST use a CSPRNG
-/// (e.g. `window.crypto.getRandomValues` via `web_sys::Crypto`).
+/// Generate a random u32 in [1, 2^31 - 1] (valid M31 range).
+/// The demo should still use a real RNG so commitment randomness is not predictable
+/// or trivially reusable across sessions. Production wallets still need stronger
+/// key management and wallet-specific entropy handling beyond this helper.
 fn demo_random_u32() -> u32 {
-    // M31 field: valid values are [0, 2^31 - 1). We generate in [1, 2^31 - 1] to
-    // avoid zero randomness, which would weaken commitment hiding.
-    1 + (js_sys::Math::random() * 2_147_483_646.0) as u32
+    let mut bytes = [0u8; 4];
+    getrandom::getrandom(&mut bytes).expect("secure randomness should be available");
+    let sample = u32::from_le_bytes(bytes) & 0x7fff_ffff;
+    if sample == 0 { 1 } else { sample }
 }
 
 use crate::{
     circuit,
+    credential_issuance,
     dual_fee_runtime::{
         dual_fee_review_snapshot, quote_payment, submit_wallet_payment, WalletQuoteRequest,
         WalletSubmissionRequest,
@@ -267,7 +269,31 @@ pub fn dual_fee_quote_payment_json(payment_asset: u32, fee_asset: u32, amount: f
         Ok(v) => v,
         Err(e) => return json_error(&e),
     };
-    json_result(quote_payment(&WalletQuoteRequest { payment_asset, fee_asset, amount }))
+    json_result(quote_payment(&WalletQuoteRequest {
+        payment_asset,
+        fee_asset,
+        amount,
+        fee_schedule_version: crate::payment_tx::PAYMENT_FEE_SCHEDULE_STANDARD,
+    }))
+}
+
+#[wasm_bindgen]
+pub fn dual_fee_quote_payment_with_schedule_json(
+    payment_asset: u32,
+    fee_asset: u32,
+    amount: f64,
+    fee_schedule_version: u32,
+) -> String {
+    let amount = match validate_f64_amount(amount, "amount") {
+        Ok(v) => v,
+        Err(e) => return json_error(&e),
+    };
+    json_result(quote_payment(&WalletQuoteRequest {
+        payment_asset,
+        fee_asset,
+        amount,
+        fee_schedule_version,
+    }))
 }
 
 #[wasm_bindgen]
@@ -275,6 +301,7 @@ pub fn dual_fee_submit_demo_payment_json(
     payment_asset: u32,
     fee_asset: u32,
     amount: f64,
+    fee_schedule_version: u32,
     recipient_owner: u32,
     payment_balance: f64,
     hush_balance: f64,
@@ -296,6 +323,7 @@ pub fn dual_fee_submit_demo_payment_json(
         payment_asset,
         fee_asset,
         amount,
+        fee_schedule_version,
         recipient_owner,
         payment_balance,
         hush_balance,
@@ -395,6 +423,7 @@ pub fn prove_and_verify(
         binding_fee_asset: in_asset,
         fee_amount: 0,
         fee_class: 1,
+        fee_schedule_version: 1,
         replay_domain: PAYMENT_TX_V1_REPLAY_DOMAIN,
         tx_binding_hash,
         sender_binding_tag: derive_sender_binding_tag(sk, tx_binding_hash),
@@ -500,36 +529,151 @@ fn use_base64_encode(s: &str) -> String {
     out
 }
 
-/// Simple result type for audit proofs.
+/// Result type for audit proofs, with serialized proof bytes for independent verification.
 #[wasm_bindgen]
 pub struct AuditOutput {
+    success: bool,
+    message: String,
+    prove_time_ms: f64,
+    verify_time_ms: f64,
+    proof_bytes: String,
+    // Public data for independent verification
+    window_start: u32,
+    window_end: u32,
+    claimed_total: f64,
+    cred_root: [u32; 4],
+    cred_null: [u32; 4],
+    epoch: u32,
+    log_num_rows: u32,
+}
+
+#[wasm_bindgen]
+impl AuditOutput {
+    #[wasm_bindgen(getter)]
+    pub fn success(&self) -> bool { self.success }
+    #[wasm_bindgen(getter)]
+    pub fn message(&self) -> String { self.message.clone() }
+    #[wasm_bindgen(getter)]
+    pub fn prove_time_ms(&self) -> f64 { self.prove_time_ms }
+    #[wasm_bindgen(getter)]
+    pub fn verify_time_ms(&self) -> f64 { self.verify_time_ms }
+    #[wasm_bindgen(getter)]
+    pub fn proof_bytes(&self) -> String { self.proof_bytes.clone() }
+    #[wasm_bindgen(getter)]
+    pub fn window_start(&self) -> u32 { self.window_start }
+    #[wasm_bindgen(getter)]
+    pub fn window_end(&self) -> u32 { self.window_end }
+    #[wasm_bindgen(getter)]
+    pub fn claimed_total(&self) -> f64 { self.claimed_total }
+    #[wasm_bindgen(getter)]
+    pub fn cred_null(&self) -> String {
+        format!("{:08x}{:08x}{:08x}{:08x}", self.cred_null[0], self.cred_null[1], self.cred_null[2], self.cred_null[3])
+    }
+    #[wasm_bindgen(getter)]
+    pub fn cred_root(&self) -> String {
+        format!("{:08x}{:08x}{:08x}{:08x}", self.cred_root[0], self.cred_root[1], self.cred_root[2], self.cred_root[3])
+    }
+    #[wasm_bindgen(getter)]
+    pub fn epoch(&self) -> u32 { self.epoch }
+    #[wasm_bindgen(getter)]
+    pub fn log_num_rows(&self) -> u32 { self.log_num_rows }
+}
+
+#[wasm_bindgen]
+pub struct CredentialIssuanceOutput {
     success: bool,
     message: String,
     prove_time_ms: f64,
 }
 
 #[wasm_bindgen]
-impl AuditOutput {
+impl CredentialIssuanceOutput {
     #[wasm_bindgen(getter)]
     pub fn success(&self) -> bool {
         self.success
     }
+
     #[wasm_bindgen(getter)]
     pub fn message(&self) -> String {
         self.message.clone()
     }
+
     #[wasm_bindgen(getter)]
     pub fn prove_time_ms(&self) -> f64 {
         self.prove_time_ms
     }
 }
 
+#[wasm_bindgen]
+pub fn prove_demo_credential_issuance(
+    sk: u32,
+    issuer_key: u32,
+    expiry: u32,
+    secret: u32,
+) -> CredentialIssuanceOutput {
+    use stwo::core::fields::m31::M31;
+
+    use crate::{poseidon2, types::MERKLE_DEPTH};
+
+    let prove_start = js_sys::Date::now();
+
+    let subject = poseidon2::hashout_to_u32_array(poseidon2::derive_owner(M31::from(sk)));
+    let issuer_id = poseidon2::derive_issuer_id(M31::from(issuer_key));
+    let credential_commitment = poseidon2::hashout_to_u32_array(poseidon2::credential_commitment(
+        issuer_id,
+        poseidon2::derive_owner(M31::from(sk)),
+        M31::from(expiry),
+        M31::from(secret),
+    ));
+
+    let mut issuer_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
+    issuer_tree.set_leaf(0, issuer_id);
+    let issuer_root = poseidon2::hashout_to_u32_array(issuer_tree.root());
+    let issuer_path_pairs = issuer_tree.path(0);
+    let mut issuer_path = [([0u32; 4], 0u32); MERKLE_DEPTH];
+    for (i, (sib, dir)) in issuer_path_pairs.iter().enumerate() {
+        issuer_path[i] = (poseidon2::hashout_to_u32_array(*sib), *dir);
+    }
+
+    let witness = credential_issuance::IssuanceWitness {
+        issuer_root,
+        credential_commitment,
+        issuer_key,
+        subject,
+        expiry,
+        secret,
+        issuer_path,
+    };
+
+    match credential_issuance::prove_issuance(&witness) {
+        Ok(()) => CredentialIssuanceOutput {
+            success: true,
+            message: "Credential issuance proof verified".to_string(),
+            prove_time_ms: js_sys::Date::now() - prove_start,
+        },
+        Err(error) => CredentialIssuanceOutput {
+            success: false,
+            message: error,
+            prove_time_ms: js_sys::Date::now() - prove_start,
+        },
+    }
+}
+
+fn audit_error(message: String) -> AuditOutput {
+    AuditOutput {
+        success: false, message, prove_time_ms: 0.0, verify_time_ms: 0.0,
+        proof_bytes: String::new(), window_start: 0, window_end: 0,
+        claimed_total: 0.0, cred_root: [0; 4], cred_null: [0; 4], epoch: 0, log_num_rows: 0,
+    }
+}
+
 /// Proves a time-window audit for the browser demo.
+/// Amounts are passed as f64 (protocol units, same transport as payment circuit).
 #[wasm_bindgen]
 pub fn prove_time_window_audit(
     window_start: u32,
     window_end: u32,
-    amounts: &[u32],
+    amounts: &[f64],
     timestamps: &[u32],
     sk: u32,
     cred_issuer: u32,
@@ -561,25 +705,22 @@ pub fn prove_time_window_audit(
         cred_path[i] = (poseidon2::hashout_to_u32_array(*sib), *dir);
     }
 
-    // Fill tx arrays (up to MAX_TX, pad with zeros)
+    // Validate and convert f64 amounts to u64 (same validation as payment circuit)
     let tx_count = amounts.len().min(MAX_TX);
-    let mut tx_amounts = [0u32; MAX_TX];
+    let mut tx_amounts = [0u64; MAX_TX];
     let mut tx_timestamps = [0u32; MAX_TX];
     for i in 0..tx_count {
-        tx_amounts[i] = amounts[i];
+        match validate_f64_amount(amounts[i], &format!("amount[{i}]")) {
+            Ok(v) => tx_amounts[i] = v,
+            Err(e) => return audit_error(e),
+        }
         tx_timestamps[i] = if i < timestamps.len() { timestamps[i] } else { window_start };
     }
 
-    let claimed_total: u32 =
-        match tx_amounts[..tx_count].iter().try_fold(0u32, |acc, &x| acc.checked_add(x)) {
+    let claimed_total: u64 =
+        match tx_amounts[..tx_count].iter().try_fold(0u64, |acc, &x| acc.checked_add(x)) {
             Some(total) => total,
-            None => {
-                return AuditOutput {
-                    success: false,
-                    message: "Amount total overflows u32".to_string(),
-                    prove_time_ms: 0.0,
-                };
-            }
+            None => return audit_error("Amount total overflows u64".to_string()),
         };
 
     let witness = time_window::TimeWindowWitness {
@@ -599,17 +740,123 @@ pub fn prove_time_window_audit(
     };
 
     let prove_start = js_sys::Date::now();
-    match time_window::prove_time_window(&witness) {
+    let proof_result = match time_window::prove_time_window(&witness) {
+        Ok(r) => r,
+        Err(e) => return audit_error(e),
+    };
+    let prove_time = js_sys::Date::now() - prove_start;
+
+    // Serialize proof for independent verification
+    let serialized = serde_json::to_string(&proof_result.proof).unwrap_or_else(|_| String::new());
+    let proof_bytes = use_base64_encode(&serialized);
+
+    let pd = &proof_result.public_data;
+    let log_num_rows = proof_result.log_num_rows;
+
+    // Verify
+    let verify_start = js_sys::Date::now();
+    match time_window::verify_time_window(&proof_result) {
         Ok(()) => AuditOutput {
             success: true,
             message: "Time-window audit proof verified".to_string(),
-            prove_time_ms: js_sys::Date::now() - prove_start,
+            prove_time_ms: prove_time,
+            verify_time_ms: js_sys::Date::now() - verify_start,
+            proof_bytes,
+            window_start: pd.window_start,
+            window_end: pd.window_end,
+            claimed_total: pd.claimed_total as f64,
+            cred_root: pd.cred_root,
+            cred_null: pd.cred_null,
+            epoch: pd.epoch,
+            log_num_rows,
         },
         Err(e) => AuditOutput {
             success: false,
-            message: e,
-            prove_time_ms: js_sys::Date::now() - prove_start,
+            message: format!("Proof generated but verification failed: {e}"),
+            prove_time_ms: prove_time,
+            verify_time_ms: js_sys::Date::now() - verify_start,
+            proof_bytes: String::new(),
+            window_start: 0, window_end: 0, claimed_total: 0.0,
+            cred_root: [0; 4], cred_null: [0; 4], epoch: 0, log_num_rows: 0,
         },
+    }
+}
+
+/// Independently verify a serialized time-window audit proof.
+/// Returns "ok" on success, error message on failure.
+#[wasm_bindgen]
+pub fn verify_audit_proof(
+    proof_b64: &str,
+    window_start: u32,
+    window_end: u32,
+    claimed_total: f64,
+    cred_root: &[u32],
+    cred_null: &[u32],
+    epoch: u32,
+    log_num_rows: u32,
+) -> String {
+    use num_traits::Zero;
+    use stwo::core::fields::qm31::QM31;
+    use stwo_constraint_framework::{FrameworkComponent, TraceLocationAllocator};
+
+    use stwo::core::{air::Component, channel::Channel, pcs::CommitmentSchemeVerifier, verifier::verify};
+
+    use crate::{
+        prover_common::{pcs_config, ProverChannel, ProverMerkleChannel, ProverMerkleHasher},
+        time_window::{TimeWindowEval, TimeWindowPublicData},
+    };
+
+    let claimed_total_u64 = match validate_f64_amount(claimed_total, "claimed_total") {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+
+    fn to_arr(s: &[u32], name: &str) -> Result<[u32; 4], String> {
+        if s.len() != 4 { return Err(format!("{name} must have 4 elements")); }
+        Ok([s[0], s[1], s[2], s[3]])
+    }
+    let cred_root = match to_arr(cred_root, "cred_root") { Ok(v) => v, Err(e) => return e };
+    let cred_null = match to_arr(cred_null, "cred_null") { Ok(v) => v, Err(e) => return e };
+
+    // Decode proof
+    let json_bytes = match base64_decode(proof_b64) {
+        Ok(b) => b,
+        Err(e) => return format!("Base64 decode failed: {e}"),
+    };
+    let json_str = match std::str::from_utf8(&json_bytes) {
+        Ok(s) => s,
+        Err(e) => return format!("UTF-8 decode failed: {e}"),
+    };
+    let proof: stwo::core::proof::StarkProof<ProverMerkleHasher> =
+        match serde_json::from_str(json_str) {
+            Ok(p) => p,
+            Err(e) => return format!("Proof deserialization failed: {e}"),
+        };
+
+    let public_data = TimeWindowPublicData {
+        window_start, window_end, claimed_total: claimed_total_u64,
+        cred_root, cred_null, epoch,
+    };
+
+    let config = pcs_config();
+    let channel = &mut ProverChannel::default();
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<ProverMerkleChannel>::new(config);
+
+    let component = FrameworkComponent::new(
+        &mut TraceLocationAllocator::default(),
+        TimeWindowEval { log_size: log_num_rows },
+        QM31::zero(),
+    );
+    let sizes = component.trace_log_degree_bounds();
+
+    commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+    channel.mix_u64(log_num_rows as u64);
+    public_data.mix_into(channel);
+    commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+
+    match verify(&[&component], channel, commitment_scheme, proof) {
+        Ok(()) => "ok".to_string(),
+        Err(e) => format!("Audit verification failed: {e:?}"),
     }
 }
 
@@ -656,9 +903,8 @@ pub fn build_witness_and_prove(
         Err(e) => return error_output(e, 0.0),
     };
 
-    // Generate per-transaction randomness via Math.random().
-    // NOT cryptographically secure — adequate for the browser demo only.
-    // Production wallets MUST use a CSPRNG (e.g. web_sys::Crypto::get_random_values).
+    // Generate per-transaction randomness from the browser RNG bridge.
+    // This keeps the demo from reusing deterministic commitment blinding values.
     let in_rand_0 = demo_random_u32();
     let in_rand_1 = demo_random_u32();
     let out_rand_0 = demo_random_u32();
@@ -741,6 +987,7 @@ pub fn build_witness_and_prove(
         binding_fee_asset: in_asset,
         fee_amount: 0,
         fee_class: 1,
+        fee_schedule_version: 1,
         replay_domain: PAYMENT_TX_V1_REPLAY_DOMAIN,
         tx_binding_hash,
         sender_binding_tag: derive_sender_binding_tag(sk, tx_binding_hash),

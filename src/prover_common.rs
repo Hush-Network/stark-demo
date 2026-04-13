@@ -15,8 +15,8 @@ pub use stwo::core::vcs::poseidon252_merkle::{
 };
 use stwo::core::{fri::FriConfig, pcs::PcsConfig};
 
-/// HACK: pow_bits=0 because stwo's non-parallel Poseidon252 grind passes raw digest
-/// but verify expects prefixed_digest. Not relevant for proof correctness anyway.
+/// Demo security: pow_bits=0, 3 FRI queries at 2x blowup = 3-bit soundness.
+/// Production would use ~128 queries. Sufficient for demo correctness.
 pub fn pcs_config() -> PcsConfig {
     PcsConfig { pow_bits: 0, fri_config: FriConfig::new(0, 1, 3) }
 }

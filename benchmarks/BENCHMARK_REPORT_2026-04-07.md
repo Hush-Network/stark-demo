@@ -1,4 +1,6 @@
-# Benchmark Report - April 7, 2026
+# Benchmark Report - April 12, 2026
+
+This report keeps the original filename for continuity, but the measurements below were refreshed on April 12, 2026.
 
 **Hardware:** AMD Ryzen 9, release build
 **Prover:** Stwo (FRI-based STARK, Mersenne31)
@@ -25,18 +27,18 @@ Results from `cargo run --bin bench --release`:
 
 | Circuit | Prove (avg) | Prove (min) | Prove (max) | Verify (avg) |
 |---|---|---|---|---|
-| Payment (2-in-2-out) | 970ms | 907ms | 1034ms | 119ms |
-| Mode A Bundle (same-asset fee) | 1058ms | 1003ms | 1122ms | 119ms |
-| Mode B Bundle (HUSH sidecar) | 1661ms | 1627ms | 1702ms | 191ms |
-| Credential Issuance | 285ms | 269ms | 322ms | (combined) |
-| Time-Window Audit (16 slots) | 291ms | 281ms | 313ms | (combined) |
-| Accounting Accept | 0.49us | 0.10us | 2.40us | (state) |
-| Epoch Accrual | 2.18us | 1.40us | 7.30us | (state) |
-| Payout Generation | 0.16us | 0.00us | 0.90us | (state) |
+| Payment (2-in-2-out) | 1058ms | 1021ms | 1092ms | 128ms |
+| Mode A Bundle (same-asset fee) | 1152ms | 1121ms | 1182ms | 125ms |
+| Mode B Bundle (HUSH sidecar) | 1826ms | 1781ms | 1872ms | 205ms |
+| Credential Issuance | 281ms | 270ms | 289ms | (combined) |
+| Time-Window Audit (16 slots) | 324ms | 316ms | 344ms | (combined) |
+| Accounting Accept | 0.57us | 0.20us | 2.60us | (state) |
+| Epoch Accrual | 2.61us | 1.80us | 9.00us | (state) |
+| Payout Generation | 0.21us | 0.00us | 1.20us | (state) |
 
-Mode B / Mode A bundle prove ratio: 1.57x | verify ratio: 1.61x
+Mode B / Mode A bundle prove ratio: 1.58x | verify ratio: 1.64x
 
-Payment prove increased ~14% from the April 2 baseline (847ms to 970ms). This is consistent with the additional 238 trace columns (range check bits for multi-limb amounts and carry decomposition). The column count increase was 0.54%, but the 14% prove time increase suggests the range check columns have a disproportionate cost relative to their count, likely due to the FRI commitment overhead per column.
+Payment prove increased ~25% from the April 2 baseline (847ms to 1058ms). This is consistent with the additional 238 trace columns (range check bits for multi-limb amounts and carry decomposition) plus the current bundle and accounting path.
 
 ---
 
@@ -97,8 +99,8 @@ Not yet measurable. Requires components that are not built yet.
 
 ## Context
 
-Payment circuit prove time at 970ms native single-threaded is a credible baseline for a full STARK proof over a ~44,400-column trace with three depth-20 Merkle paths and nine Poseidon2 hash traces. The 14% increase from the previous 847ms baseline reflects the cost of multi-limb amount encoding (300 range check columns, 6 carry bit columns).
+Payment circuit prove time at 1058ms native single-threaded is a credible baseline for a full STARK proof over a ~44,400-column trace with three depth-20 Merkle paths and nine Poseidon2 hash traces. The increase from the previous 847ms baseline reflects the cost of multi-limb amount encoding (300 range check columns, 6 carry bit columns) plus the current bundle path.
 
-Mode A bundles (same-asset fee) add minimal overhead beyond the payment proof since accounting and epoch operations run in sub-microsecond time. Mode B bundles (HUSH sidecar) require a second proof for the fee sidecar circuit (~30,000 columns), producing the 1.57x prove ratio.
+Mode A bundles (same-asset fee) add moderate overhead beyond the payment proof while accounting and epoch operations still run in microseconds. Mode B bundles (HUSH sidecar) require a second proof for the fee sidecar circuit (~30,000 columns), producing the 1.58x prove ratio.
 
 The path to production throughput runs through recursive proof aggregation: one STARK proof per block covering all transactions. That is a design target, not a measured result.

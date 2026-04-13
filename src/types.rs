@@ -53,6 +53,7 @@ pub struct PaymentWitness {
     pub binding_fee_asset: u32,
     pub fee_amount: u64,
     pub fee_class: u32,
+    pub fee_schedule_version: u32,
     pub replay_domain: u32,
     pub tx_binding_hash: [u32; 4],
     pub sender_binding_tag: [u32; 4],

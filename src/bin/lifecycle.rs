@@ -150,6 +150,7 @@ fn build_payment_witness(
         binding_fee_asset: in_asset,
         fee_amount: 0,
         fee_class: 1,
+        fee_schedule_version: 1,
         replay_domain: PAYMENT_TX_V1_REPLAY_DOMAIN,
         tx_binding_hash,
         sender_binding_tag: derive_sender_binding_tag(sk, tx_binding_hash),
@@ -344,13 +345,13 @@ fn main() {
 
     let cred_path = path_to_u32(&ledger.cred_tree.path(0));
 
-    let mut amounts = [0u32; 16];
+    let mut amounts = [0u64; 16];
     let mut timestamps = [0u32; 16];
     amounts[0] = 8000;
     timestamps[0] = epoch; // First payment output
     amounts[1] = 1500;
     timestamps[1] = epoch_2; // Second payment output
-    let claimed_total = 9500;
+    let claimed_total = 9500u64;
 
     let tw_witness = time_window::TimeWindowWitness {
         window_start: 999,
@@ -384,7 +385,7 @@ fn main() {
     println!("\n=== Protocol Lifecycle Complete ===");
     println!("Demonstrated:");
     println!("  1. Credential issuance (issuer authorization via Merkle proof)");
-    println!("  2. First payment (credential-gated, 2-in-2-out)");
+    println!("  2. First payment (2-in-2-out with proof-level credential check)");
     println!("  3. Second payment (spending change output, state continuity)");
     println!("  4. Time-window audit (aggregate disclosure without individual tx reveal)");
     println!("  5. Double-spend rejection (nullifier set enforcement)");

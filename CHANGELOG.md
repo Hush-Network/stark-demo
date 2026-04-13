@@ -14,7 +14,7 @@
 
 ## 0.1.0 (2026-03-30)
 
-- Payment circuit: 2-in-2-out credential-gated private transfer
+- Payment circuit: 2-in-2-out private transfer with proof-level credential check
 - Credential issuance circuit with Merkle-based issuer authorization
 - Time-window audit circuit (16-slot aggregate proofs)
 - Batch proving for multi-transaction STARK proofs

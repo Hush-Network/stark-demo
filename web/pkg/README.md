@@ -4,15 +4,15 @@
 
 **[Try it live at demo.hushnetwork.io](https://demo.hushnetwork.io)**
 
-This repository contains the STARK proving engine behind the Hush browser demo. It proves the core payment, credential issuance, and time-window audit circuits over Mersenne31 with no trusted setup. It does not prove a live network.
+This repository contains the STARK proving engine and browser demo behind the public HushPay proof demo. It proves the core payment, credential issuance, and time-window audit circuits over Mersenne31 with no trusted setup. It does not prove a live network.
 
 Built on [Stwo](https://github.com/starkware-libs/stwo) (FRI-based STARK prover, Mersenne31 field) with Poseidon2 as the in-circuit hash.
 
-## Relationship to the product demo
+## Relationship to the browser demo
 
-The live demo shows the intended Hush wallet experience under the fee model being designed: the sender sees amount, fee, and total in the payment asset while the receiver gets the full amount.
+The live demo opens directly into the intended HushPay wallet experience: the sender sees amount, fee route, and total debit up front while the receiver gets the full payment amount.
 
-This repository does not implement that fee-routing model. It provides the proof engine underneath the demo: payment validity, credential checks, audit proofs, and receipt verification.
+This repository provides the proof engine underneath that experience: payment validity, credential checks, audit proofs, and receipt verification. Wallet funding, credential issuance, and live network submission remain represented in the demo.
 
 ## Status boundary
 
@@ -52,7 +52,7 @@ This repository does not implement that fee-routing model. It provides the proof
 
 Three STARK circuits on Stwo over Mersenne31, with full Poseidon2 AIR constraints (S-box decomposed as x^2 -> x^4 -> x^5 for degree-2 constraint compatibility).
 
-**Payment circuit** (2-in-2-out credential-gated transfers)
+**Payment circuit** (2-in-2-out private transfer with credential check)
 - Note consumption and creation with nullifier/commitment pairs
 - Balance conservation enforced in-circuit
 - Nullifier inequality check (prevents double-spend)
@@ -86,19 +86,21 @@ Measured on AMD Ryzen 9 / release build. 10 iterations per circuit. Single-threa
 
 | Circuit             | Prove (avg) | Prove (min) | Prove (max) | Verify (avg) |
 |---------------------|-------------|-------------|-------------|--------------|
-| Payment             |      970ms  |      907ms  |     1034ms  |       119ms  |
-| Mode A Bundle       |     1058ms  |     1003ms  |     1122ms  |       119ms  |
-| Mode B Bundle       |     1661ms  |     1627ms  |     1702ms  |       191ms  |
-| Credential Issuance |      285ms  |      269ms  |      322ms  |   (combined) |
-| Time-Window Audit   |      291ms  |      281ms  |      313ms  |   (combined) |
+| Payment             |     1058ms  |     1021ms  |     1092ms  |       128ms  |
+| Mode A Bundle       |     1152ms  |     1121ms  |     1182ms  |       125ms  |
+| Mode B Bundle       |     1826ms  |     1781ms  |     1872ms  |       205ms  |
+| Credential Issuance |      281ms  |      270ms  |      289ms  |   (combined) |
+| Time-Window Audit   |      324ms  |      316ms  |      344ms  |   (combined) |
 
-Native: AMD Ryzen 9, release build, April 7 2026. Mode A = same-asset fee. Mode B = HUSH sidecar fee (payment + fee sidecar proofs). Accounting, epoch accrual, and payout generation run in sub-microsecond time and are not shown.
+Native: AMD Ryzen 9, release build, April 12 2026. Mode A = same-asset fee. Mode B = HUSH sidecar fee (payment + fee sidecar proofs). Accounting, epoch accrual, and payout generation run in sub-microsecond time and are not shown.
 
 Recursive batching and multi-threading are target-state optimizations, not measured here. See [benchmarks/](benchmarks/) for the full breakdown.
 
+Fixed-width amount encoding means payment size does not change the circuit shape within the supported amount range. That is why the current browser demo can already say something meaningful about large-value payment latency even before batching or recursion is implemented.
+
 ## Tests
 
-110 tests covering:
+113 tests covering:
 - Valid proof generation and verification for all three circuits
 - Balance conservation rejection (mismatched inputs/outputs)
 - Nullifier reuse rejection (double-spend prevention)
@@ -137,14 +139,14 @@ src/
 docs/
   architecture.md         Circuit architecture and proving notes
 benchmarks/
-  BENCHMARK_REPORT_2026-04-07.md  Latest benchmark run with measured, inferred, and target sections
+  BENCHMARK_REPORT_2026-04-07.md  Latest benchmark run with measured, inferred, and target sections (refreshed April 12, 2026)
   BENCHMARK_REPORT_2026-04-02.md  Previous baseline (pre-multi-limb)
 ```
 
 ## Development
 
 ```bash
-scripts/test.sh     # run tests (110 tests)
+scripts/test.sh     # run tests (113 tests)
 scripts/bench.sh    # benchmarks
 scripts/fmt.sh      # format
 cargo clippy -- -D warnings
@@ -165,7 +167,7 @@ This crate is the proving engine for Hush Network. It does not implement:
 - Note discovery
 - Consumer wallet flows beyond the browser demo
 
-See [docs/architecture.md](docs/architecture.md) for circuit architecture notes and [benchmarks/BENCHMARK_REPORT_2026-04-07.md](benchmarks/BENCHMARK_REPORT_2026-04-07.md) for the measured versus target breakdown.
+See [docs/architecture.md](docs/architecture.md) for circuit architecture notes and [benchmarks/BENCHMARK_REPORT_2026-04-07.md](benchmarks/BENCHMARK_REPORT_2026-04-07.md) for the measured versus target breakdown. That report was refreshed with a new local run on April 12, 2026.
 
 ## Prior art
 

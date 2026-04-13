@@ -1,4 +1,4 @@
-import init, { verify_serialized_proof, recompute_tx_binding_hash_json } from '../pkg/hush_demo_stark.js';
+import init, { verify_serialized_proof, verify_audit_proof, recompute_tx_binding_hash_json } from '../pkg/hush_demo_stark.js';
 
 const input = document.getElementById('receipt-input');
 const btnVerify = document.getElementById('btn-verify');
@@ -81,9 +81,14 @@ async function verify() {
     return;
   }
 
+  // Route: audit proof or payment receipt?
+  if (receipt.type === 'hush-audit-proof' && receipt.proof && receipt.proof.proof_bytes) {
+    return verifyAuditProof(receipt);
+  }
+
   // Accept both old tx_id and new receipt_id
   const receiptId = receipt.receipt_id || receipt.tx_id;
-  if (!receipt.version || !receiptId || !receipt.proof) {
+  if (!receipt.version || !receiptId || !receipt.proof || typeof receipt.proof !== 'object') {
     showError('Missing required fields (version, receipt_id/tx_id, proof).');
     return;
   }
@@ -171,7 +176,12 @@ async function verify() {
   // --- Check 3: Display cross-check (soft, logged but not blocking) ---
   const crossCheckNotes = [];
   if (bindingVerified && receipt.amount != null && receipt.amt_scale) {
-    const expectedUnits = Math.round(receipt.amount * receipt.amt_scale);
+    if (receipt.amt_scale !== 10000) {
+      crossCheckNotes.push(`Unexpected amount scale (${receipt.amt_scale}). Demo receipts are expected to use 10000.`);
+    }
+    const expectedUnits = Number.isInteger(receipt.amount_units)
+      ? receipt.amount_units
+      : Math.round(receipt.amount * receipt.amt_scale);
     if (expectedUnits !== receipt.binding.recipient_amount) {
       crossCheckNotes.push(`Display amount (${receipt.amount}) does not match binding (${receipt.binding.recipient_amount} protocol units at scale ${receipt.amt_scale})`);
     }
@@ -267,5 +277,87 @@ function showError(msg) {
   banner.className = 'result-banner invalid';
   banner.textContent = msg;
   body.innerHTML = '';
+  resultEl.classList.add('show');
+}
+
+async function verifyAuditProof(receipt) {
+  const p = receipt.proof;
+  if (!p || !p.proof_bytes || !p.cred_root || !p.cred_null) {
+    showError('Audit proof is missing required fields (proof_bytes, cred_root, cred_null).');
+    return;
+  }
+
+  if (!wasmReady) {
+    showError('WASM not ready. Please wait and retry.');
+    return;
+  }
+
+  let verified = false;
+  let error = null;
+
+  try {
+    const credRoot = hexToU32Array(p.cred_root);
+    const credNull = hexToU32Array(p.cred_null);
+    const result = verify_audit_proof(
+      p.proof_bytes,
+      p.window_start,
+      p.window_end,
+      p.claimed_total,
+      credRoot,
+      credNull,
+      p.epoch || 0,
+      p.log_num_rows || 4,
+    );
+    if (result === 'ok') {
+      verified = true;
+    } else {
+      error = result;
+    }
+  } catch (e) {
+    error = e.message;
+  }
+
+  if (verified) {
+    banner.className = 'result-banner valid';
+    banner.textContent = '\u2713 Audit proof verified. STARK proof is valid.';
+  } else {
+    banner.className = 'result-banner invalid';
+    banner.textContent = '\u2717 Audit verification failed. ' + (error || 'Unknown error.');
+  }
+
+  const scale = receipt.amt_scale || 0;
+  let html = '';
+
+  if (verified) {
+    html += `<div class="result-row result-row-highlight">
+      <span class="result-label">STARK proof</span>
+      <span class="result-value result-verified">Verified</span>
+    </div>`;
+  }
+
+  html += '<div class="result-section">Proven Statement (cryptographically verified)</div>';
+  html += row('Proof type', 'Time-window audit');
+  html += row('Window', `${esc(receipt.window?.start_date || '')} to ${esc(receipt.window?.end_date || '')}`);
+  if (p.claimed_total != null) {
+    html += row('Total volume', fmtBoundAmount(p.claimed_total, scale));
+  }
+  html += row('Transaction count', esc(String(receipt.tx_count || '?')));
+  html += row('Asset', esc(receipt.asset || ''));
+
+  html += '<div class="result-section">Proof Metadata</div>';
+  html += row('Prove time', esc(String(receipt.prove_ms || '?')) + 'ms');
+  html += row('Verify time', esc(String(receipt.verify_ms || '?')) + 'ms');
+  html += row('Cred root', esc(p.cred_root));
+  html += row('Cred null', esc(p.cred_null));
+  html += row('Epoch', esc(String(p.epoch || '')));
+
+  if (receipt.disclosed) {
+    html += '<div class="result-section">Disclosed Fields</div>';
+    for (const [field, val] of Object.entries(receipt.disclosed)) {
+      html += row(esc(field), val ? 'Disclosed' : 'Hidden');
+    }
+  }
+
+  body.innerHTML = html;
   resultEl.classList.add('show');
 }

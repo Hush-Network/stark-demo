@@ -278,7 +278,7 @@ fn bench_time_window() -> (f64, f64, f64) {
         cred_path[i] = (poseidon2::hashout_to_u32_array(path_vec[i].0), path_vec[i].1);
     }
 
-    let mut amounts = [0u32; 16];
+    let mut amounts = [0u64; 16];
     let mut timestamps = [0u32; 16];
     amounts[0] = 50000;
     timestamps[0] = 100;
@@ -292,7 +292,7 @@ fn bench_time_window() -> (f64, f64, f64) {
     let witness = time_window::TimeWindowWitness {
         window_start: 50,
         window_end: 500,
-        claimed_total: 110000,
+        claimed_total: 110000u64,
         cred_root: poseidon2::hashout_to_u32_array(cred_tree.root()),
         epoch: 1000,
         tx_amounts: amounts,

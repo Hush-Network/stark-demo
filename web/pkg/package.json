@@ -1,7 +1,7 @@
 {
   "name": "hush-demo-stark",
   "type": "module",
-  "description": "STARK circuits for credential-gated private payments",
+  "description": "STARK circuits for private payments with credential checks",
   "version": "0.1.0",
   "license": "MIT",
   "repository": {

@@ -2,9 +2,27 @@
 /* eslint-disable */
 
 /**
- * Simple result type for audit proofs.
+ * Result type for audit proofs, with serialized proof bytes for independent verification.
  */
 export class AuditOutput {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    readonly claimed_total: number;
+    readonly cred_null: string;
+    readonly cred_root: string;
+    readonly epoch: number;
+    readonly log_num_rows: number;
+    readonly message: string;
+    readonly proof_bytes: string;
+    readonly prove_time_ms: number;
+    readonly success: boolean;
+    readonly verify_time_ms: number;
+    readonly window_end: number;
+    readonly window_start: number;
+}
+
+export class CredentialIssuanceOutput {
     private constructor();
     free(): void;
     [Symbol.dispose](): void;
@@ -48,16 +66,21 @@ export function compute_note_root(sk: number, in_asset: number, in_amt_0: number
 
 export function dual_fee_quote_payment_json(payment_asset: number, fee_asset: number, amount: number): string;
 
+export function dual_fee_quote_payment_with_schedule_json(payment_asset: number, fee_asset: number, amount: number, fee_schedule_version: number): string;
+
 export function dual_fee_review_json(): string;
 
-export function dual_fee_submit_demo_payment_json(payment_asset: number, fee_asset: number, amount: number, recipient_owner: number, payment_balance: number, hush_balance: number, credential_expiry: number): string;
+export function dual_fee_submit_demo_payment_json(payment_asset: number, fee_asset: number, amount: number, fee_schedule_version: number, recipient_owner: number, payment_balance: number, hush_balance: number, credential_expiry: number): string;
 
 export function prove_and_verify(epoch: number, note_root: Uint32Array, cred_root: Uint32Array, sk: number, in_asset: number, in_amt_0: number, in_rand_0: number, in_amt_1: number, in_rand_1: number, out_amt_0: number, out_owner_0: Uint32Array, out_rand_0: number, out_amt_1: number, out_rand_1: number, cred_issuer: number, cred_expiry: number, cred_secret: number, note_path_0_flat: Uint32Array, note_path_1_flat: Uint32Array, cred_path_flat: Uint32Array): ProofOutput;
 
+export function prove_demo_credential_issuance(sk: number, issuer_key: number, expiry: number, secret: number): CredentialIssuanceOutput;
+
 /**
  * Proves a time-window audit for the browser demo.
+ * Amounts are passed as f64 (protocol units, same transport as payment circuit).
  */
-export function prove_time_window_audit(window_start: number, window_end: number, amounts: Uint32Array, timestamps: Uint32Array, sk: number, cred_issuer: number, cred_expiry: number, cred_secret: number): AuditOutput;
+export function prove_time_window_audit(window_start: number, window_end: number, amounts: Float64Array, timestamps: Uint32Array, sk: number, cred_issuer: number, cred_expiry: number, cred_secret: number): AuditOutput;
 
 /**
  * Recompute tx_binding_hash from a JSON-encoded binding preimage.
@@ -66,6 +89,12 @@ export function prove_time_window_audit(window_start: number, window_end: number
  * deepening the fragile JS-to-WASM numeric boundary.
  */
 export function recompute_tx_binding_hash_json(binding_json: string): string;
+
+/**
+ * Independently verify a serialized time-window audit proof.
+ * Returns "ok" on success, error message on failure.
+ */
+export function verify_audit_proof(proof_b64: string, window_start: number, window_end: number, claimed_total: number, cred_root: Uint32Array, cred_null: Uint32Array, epoch: number, log_num_rows: number): string;
 
 /**
  * Verify a serialized STARK proof against its public outputs.
@@ -102,22 +131,39 @@ export interface InitOutput {
     readonly dual_fee_review_json: (a: number) => void;
     readonly recompute_tx_binding_hash_json: (a: number, b: number, c: number) => void;
     readonly dual_fee_quote_payment_json: (a: number, b: number, c: number, d: number) => void;
-    readonly dual_fee_submit_demo_payment_json: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly dual_fee_quote_payment_with_schedule_json: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly dual_fee_submit_demo_payment_json: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly prove_and_verify: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
     readonly __wbg_auditoutput_free: (a: number, b: number) => void;
     readonly auditoutput_success: (a: number) => number;
     readonly auditoutput_message: (a: number, b: number) => void;
     readonly auditoutput_prove_time_ms: (a: number) => number;
+    readonly auditoutput_verify_time_ms: (a: number) => number;
+    readonly auditoutput_proof_bytes: (a: number, b: number) => void;
+    readonly auditoutput_window_start: (a: number) => number;
+    readonly auditoutput_window_end: (a: number) => number;
+    readonly auditoutput_claimed_total: (a: number) => number;
+    readonly auditoutput_cred_null: (a: number, b: number) => void;
+    readonly auditoutput_cred_root: (a: number, b: number) => void;
+    readonly auditoutput_epoch: (a: number) => number;
+    readonly auditoutput_log_num_rows: (a: number) => number;
+    readonly __wbg_credentialissuanceoutput_free: (a: number, b: number) => void;
+    readonly credentialissuanceoutput_success: (a: number) => number;
+    readonly credentialissuanceoutput_message: (a: number, b: number) => void;
+    readonly credentialissuanceoutput_prove_time_ms: (a: number) => number;
+    readonly prove_demo_credential_issuance: (a: number, b: number, c: number, d: number) => number;
     readonly prove_time_window_audit: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
+    readonly verify_audit_proof: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
     readonly build_witness_and_prove: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => number;
     readonly verify_serialized_proof: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly compute_credential_root: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly compute_note_root: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly compute_merkle_path: (a: number, b: number, c: number, d: number) => void;
+    readonly __wbindgen_export: (a: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
-    readonly __wbindgen_export: (a: number, b: number, c: number) => void;
-    readonly __wbindgen_export2: (a: number, b: number) => number;
-    readonly __wbindgen_export3: (a: number, b: number, c: number, d: number) => number;
+    readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export3: (a: number, b: number) => number;
+    readonly __wbindgen_export4: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_start: () => void;
 }
 
