@@ -158,7 +158,7 @@ export function renderSidebar(activeView) {
     </div>
 
     <div class="side-footer">
-      <button class="foot-btn" onclick="toggleTweaks()">${svg.settings()} Tweaks</button>
+      <button class="foot-btn" onclick="toggleTweaks()">${svg.settings()} Customize UI</button>
       <button class="foot-btn muted" onclick="askComingSoon('Help')">${svg.help()} Help</button>
     </div>
   `;
@@ -364,7 +364,7 @@ export function renderTweaksPanel(state) {
 
   return `
     <div class="tweaks-head">
-      <h4>Tweaks</h4>
+      <h4>Customize UI</h4>
       <button class="close-button" onclick="toggleTweaks()" aria-label="Close">×</button>
     </div>
 
@@ -392,11 +392,11 @@ export function renderTweaksPanel(state) {
         <button class="tweak-opt ${t.cardStyle === 'glass' ? 'active' : ''}"   onclick="setTweak('cardStyle','glass')">Glass</button>
       </div>
 
-      <div class="tweak-section">Radius</div>
+      <div class="tweak-section">Roundness</div>
       <input type="range" min="6" max="22" value="${t.radius}" oninput="setTweak('radius', this.value)">
 
       <div class="tweak-section">Font size</div>
-      <input type="range" min="13" max="17" value="${t.fontSize}" oninput="setTweak('fontSize', this.value)">
+      <input type="range" min="13" max="18" value="${t.fontSize}" oninput="setTweak('fontSize', this.value)">
     </div>
   `;
 }

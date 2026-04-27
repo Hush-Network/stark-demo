@@ -156,8 +156,8 @@ function applyShellAttributes() {
   app.style.setProperty('--brand-accent', preset.accent);
   app.style.setProperty('--brand-accent-2', preset.accent2);
   app.style.setProperty('--brand-accent-deep', preset.deep);
-  app.style.setProperty('--radius', `${state.tweaks.radius}px`);
-  app.style.setProperty('--size-base', `${state.tweaks.fontSize}px`);
+  app.style.setProperty('--w-radius', `${state.tweaks.radius}px`);
+  app.style.setProperty('--w-size-base', `${state.tweaks.fontSize}px`);
   if (tweaksEl) tweaksEl.classList.toggle('open', state.tweaksOpen);
 }
 
@@ -622,6 +622,7 @@ async function sendPayment() {
   if (state.provenanceStatus === 'revoked') {
     pushLog('error', 'Spend blocked: lineage is in the revocation accumulator.');
     state.isSending = false;
+    state.composerOpen = false;
     render();
     showToast('Provenance revoked. Payment blocked before proving.', 'error');
     return;
@@ -657,6 +658,7 @@ async function sendPayment() {
     if (!response.ok) {
       pushLog('error', response.error);
       state.isSending = false;
+      state.composerOpen = false;
       render();
       showToast(response.error, 'error');
       return;
@@ -775,11 +777,13 @@ async function sendPayment() {
     state.successTxId = txId;
     state.receiptTxId = txId;
     state.isSending = false;
+    state.composerOpen = false;
     render();
     showToast(`Payment sent to ${recipient}.`, 'success');
   } catch (error) {
     pushLog('error', `Payment proof failed: ${error.message}`);
     state.isSending = false;
+    state.composerOpen = false;
     render();
     showToast(`Payment bundle failed: ${error.message}`, 'error');
   }
@@ -1179,7 +1183,17 @@ window.toggleTweaks = function toggleTweaks() {
 };
 
 window.setTweak = function setTweak(key, value) {
-  if (key === 'radius' || key === 'fontSize') value = Number(value);
+  if (key === 'radius' || key === 'fontSize') {
+    // Apply continuously without re-rendering. Re-render would re-create the
+    // slider element each frame and break the drag interaction.
+    const num = Number(value);
+    state.tweaks[key] = num;
+    if (app) {
+      if (key === 'radius') app.style.setProperty('--w-radius', `${num}px`);
+      if (key === 'fontSize') app.style.setProperty('--w-size-base', `${num}px`);
+    }
+    return;
+  }
   state.tweaks[key] = value;
   render();
 };
