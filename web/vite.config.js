@@ -12,7 +12,7 @@ export default defineConfig({
     },
   },
   server: {
-    // COOP/COEP headers — enable if WASM needs SharedArrayBuffer
+    // COOP/COEP headers: enable if WASM needs SharedArrayBuffer
     // headers: {
     //   'Cross-Origin-Opener-Policy': 'same-origin',
     //   'Cross-Origin-Embedder-Policy': 'require-corp',

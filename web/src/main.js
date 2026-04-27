@@ -1,3 +1,4 @@
+import './wallet.css';
 import init, {
   dual_fee_quote_payment_with_schedule_json,
   dual_fee_submit_demo_payment_json,
@@ -21,6 +22,17 @@ import {
   renderProofLog,
   renderProofOutputs,
 } from './lib/renderers.js';
+import {
+  renderSidebar,
+  renderTopbar,
+  renderBalanceCard,
+  renderBalancesTable,
+  renderRecentActivity,
+  renderPrivacyNote,
+  renderTweaksPanel,
+  renderComposerOverlay,
+  renderComingSoon,
+} from './lib/walletShell.js';
 
 // 1 protocol unit = $0.0001 (4 decimal places). Circuit uses four-limb radix-2^15 encoding
 // with u64 amounts (max ~$115 trillion per note). Display dollars * AMT_SCALE = protocol units.
@@ -31,10 +43,16 @@ const CRED_ISSUER = 1;
 const CRED_EXPIRY = 50_000;
 const CRED_SECRET = 777;
 
-const DEFAULT_RECIPIENT = 'Meridian Labs';
-const DEFAULT_AMOUNT = '5,000,000.00';
-const INITIAL_BALANCES_UNITS = { USDC: 75_000_000 * AMT_SCALE, USDT: 40_000_000 * AMT_SCALE };
-const INITIAL_HUSH_BALANCE_UNITS = 25_000 * AMT_SCALE;
+const USER_HANDLE = 'UserName.hush';
+const DEFAULT_RECIPIENT = 'alice.hush';
+const DEFAULT_AMOUNT = '500.00';
+const INITIAL_BALANCES_UNITS = { USDC: 2_000 * AMT_SCALE, USDT: 1_000 * AMT_SCALE };
+// 1,284.32 HUSH * AMT_SCALE (1284.32 -> 12,843,200 protocol units)
+const INITIAL_HUSH_BALANCE_UNITS = 12_843_200;
+// Cosmetic display values for non-proving asset rows (EURC and HUSH).
+// These do not affect the proving stack; they are only included in the
+// headline-balance calculation so the asset list rows visibly sum.
+const COSMETIC_USD_VALUE = { EURC: 762, HUSH: 85.50 };
 
 let wasmReady = false;
 let wasmError = null;
@@ -61,13 +79,52 @@ const state = {
   auditLoading: false,
   auditResult: null,
   lastSubmission: null,
+  // Wallet UI state
+  theme: 'dark',
+  activeView: 'wallet',
+  composerOpen: false,
+  tweaksOpen: false,
+  balancesTab: 'balances',
+  tweaks: {
+    accent: 'mint',
+    density: 'cozy',
+    cardStyle: 'soft',
+    radius: 14,
+    fontSize: 14,
+  },
 };
 
 const splash = document.getElementById('splash');
 const app = document.getElementById('app');
 const stage = document.getElementById('stage');
 const rail = document.getElementById('rail');
+const sidebarEl = document.getElementById('sidebar');
+const topbarEl = document.getElementById('topbar');
+const tweaksEl = document.getElementById('tweaks');
+const composerOverlayEl = document.getElementById('composer-overlay');
 const truthContent = document.getElementById('truth-content');
+
+// Display values for the wallet asset list. The headline total balance and
+// the per-asset balance/value strings are intentionally cosmetic; the proving
+// stack uses state.balancesUnits / state.hushBalanceUnits internally for
+// quote and fee logic regardless of what these display rows show.
+const ASSET_DISPLAY = {
+  USDT: { balance: '1,000.00', value: '$1,000.00' },
+  USDC: { balance: '2,000.00', value: '$2,000.00' },
+  EURC: { balance: '700.00',   value: '$762.00' },
+  HUSH: { balance: '1,284.32', value: '$85.50' },
+};
+function balanceDisplayFor(sym) {
+  return ASSET_DISPLAY[sym] || { balance: '0.00', value: '$0.00' };
+}
+
+const ACCENT_PRESETS = {
+  mint:   { accent: '#0891b2', accent2: '#22d3ee', deep: '#5eead4' },
+  sage:   { accent: '#10b981', accent2: '#5eead4', deep: '#34d399' },
+  violet: { accent: '#8b5cf6', accent2: '#a78bfa', deep: '#c4b5fd' },
+  sky:    { accent: '#0ea5e9', accent2: '#38bdf8', deep: '#7dd3fc' },
+  rose:   { accent: '#f43f5e', accent2: '#fb7185', deep: '#fda4af' },
+};
 
 async function boot() {
   const minimumSplash = new Promise(resolve => setTimeout(resolve, 450));
@@ -90,15 +147,41 @@ boot().catch((error) => {
   if (copy) copy.textContent = `Failed to load prover: ${error.message}`;
 });
 
+function applyShellAttributes() {
+  if (!app) return;
+  app.setAttribute('data-theme', state.theme);
+  app.setAttribute('data-density', state.tweaks.density);
+  app.setAttribute('data-card', state.tweaks.cardStyle);
+  const preset = ACCENT_PRESETS[state.tweaks.accent] || ACCENT_PRESETS.mint;
+  app.style.setProperty('--brand-accent', preset.accent);
+  app.style.setProperty('--brand-accent-2', preset.accent2);
+  app.style.setProperty('--brand-accent-deep', preset.deep);
+  app.style.setProperty('--radius', `${state.tweaks.radius}px`);
+  app.style.setProperty('--size-base', `${state.tweaks.fontSize}px`);
+  if (tweaksEl) tweaksEl.classList.toggle('open', state.tweaksOpen);
+}
+
 function render() {
-  stage.innerHTML = renderStage();
-  if (rail) rail.innerHTML = '';
+  applyShellAttributes();
+  if (sidebarEl) sidebarEl.innerHTML = renderSidebar(state.activeView);
+  if (topbarEl) topbarEl.innerHTML = renderTopbar(state.theme, USER_HANDLE);
+  if (stage) stage.innerHTML = renderStage();
+  if (rail) rail.innerHTML = renderRail();
+  if (tweaksEl) tweaksEl.innerHTML = renderTweaksPanel(state);
+  if (composerOverlayEl) {
+    composerOverlayEl.innerHTML = state.composerOpen ? renderComposerOverlay(renderComposerBody()) : '';
+    composerOverlayEl.classList.toggle('show', state.composerOpen);
+  }
   if (truthContent) truthContent.innerHTML = renderTruthOverlayView();
   const amountInput = document.getElementById('amount-input');
   const recipientInput = document.getElementById('recipient-input');
   if (amountInput) amountInput.value = state.currentAmountInput;
   if (recipientInput) recipientInput.value = state.currentRecipient;
   refreshSendSummary();
+}
+
+function renderRail() {
+  return renderRecentActivity(state.transactions) + renderPrivacyNote();
 }
 
 function currentAmount() {
@@ -245,121 +328,104 @@ function refreshSendSummary() {
   }
 }
 
-function renderStage() {
-  const balanceLabel = `$${fmtMoney(currentBalance())}`;
-  const balanceSizeClass = balanceLabel.length > 15 ? 'compact' : balanceLabel.length > 12 ? 'tight' : '';
-  const latestTx = state.successTxId ? getTransaction(state.successTxId) : null;
+// The composer body is the existing payment panel content. Same IDs and same
+// onclick handlers, preserving all wiring to sendPayment, updateAmount, etc.
+function renderComposerBody() {
   const quote = currentQuote();
-  const feeRouteLabel = state.feeMode === 'hush' ? 'HUSH sidecar' : 'Same asset';
   const routeArrowLabel = state.feeMode === 'hush' ? `${state.activeAsset} -> HUSH` : `${state.activeAsset} -> ${state.activeAsset}`;
-  const latestProof = state.timings ? `${state.timings.prove.toFixed(0)}ms` : 'Not run yet';
-  const provenanceLabel = provenanceStatusLabel();
-
   return `
-    <section class="desk-shell">
-      <div class="desk-grid">
-        <aside class="account-panel">
-          <div class="panel-head">
-            <div>
-              <h2>Available balance</h2>
+    <section class="payment-panel" id="composer">
+      <div class="payment-grid">
+        <div class="composer-form">
+          <div class="field">
+            <label for="recipient-input">Recipient</label>
+            <input id="recipient-input" type="text" value="${esc(state.currentRecipient)}" placeholder="Recipient name or wallet reference" oninput="updateRecipient(this.value)">
+          </div>
+          <div class="field">
+            <label for="amount-input">Amount</label>
+            <input id="amount-input" type="text" value="${esc(state.currentAmountInput)}" inputmode="decimal" placeholder="0.00" oninput="updateAmount(this.value)">
+          </div>
+          <div class="composer-presets">
+            <button class="asset-tab ${currentAmount() === 50 ? 'active' : ''}" onclick="setAmountPreset('50.00')">$50</button>
+            <button class="asset-tab ${currentAmount() === 100 ? 'active' : ''}" onclick="setAmountPreset('100.00')">$100</button>
+            <button class="asset-tab ${currentAmount() === 500 ? 'active' : ''}" onclick="setAmountPreset('500.00')">$500</button>
+            <button class="asset-tab ${currentAmount() === 1000 ? 'active' : ''}" onclick="setAmountPreset('1,000.00')">$1,000</button>
+          </div>
+          <div class="field">
+            <label>Asset</label>
+            <div class="asset-tabs">
+              <button class="asset-tab ${state.activeAsset === 'USDC' ? 'active' : ''}" onclick="switchAsset('USDC')">USDC</button>
+              <button class="asset-tab ${state.activeAsset === 'USDT' ? 'active' : ''}" onclick="switchAsset('USDT')">USDT</button>
             </div>
-            <div class="panel-head-actions">
-              <div class="status-pill ${state.provenanceStatus === 'valid' ? 'good' : state.provenanceStatus === 'sanctioned' ? 'warn' : 'bad'}">${provenanceLabel}</div>
-              ${state.feeMode === 'hush' ? `<div class="panel-side-balance">HUSH ${fmtAssetValue(currentHushBalance())}</div>` : ''}
+          </div>
+          <div class="field">
+            <label>Fee</label>
+            <div class="asset-tabs composer-route-tabs">
+              <button class="asset-tab ${state.feeMode === 'same_asset' ? 'active' : ''}" onclick="switchFeeMode('same_asset')">Pay in ${state.activeAsset}</button>
+              <button class="asset-tab ${state.feeMode === 'hush' ? 'active' : ''}" onclick="switchFeeMode('hush')">Pay in HUSH</button>
             </div>
           </div>
-          <div class="balance-display ${balanceSizeClass}" title="${balanceLabel}">${balanceLabel}</div>
-          <div class="asset-tabs desk-tabs">
-            <button class="asset-tab ${state.activeAsset === 'USDC' ? 'active' : ''}" onclick="switchAsset('USDC')">USDC</button>
-            <button class="asset-tab ${state.activeAsset === 'USDT' ? 'active' : ''}" onclick="switchAsset('USDT')">USDT</button>
-          </div>
-          <div class="account-meta">
-            <div><span>Fee route</span><strong>${feeRouteLabel}</strong></div>
-            <div><span>Last proof</span><strong>${latestProof}</strong></div>
-          </div>
-          <div class="latest-panel">
-            ${
-              latestTx
-                ? `
-                  <div class="latest-label">Latest payment</div>
-                  <div class="latest-amount">${fmtMoney(latestTx.amount)} ${latestTx.asset}</div>
-                  <div class="latest-meta">${esc(latestTx.recipient)} | ${relativeTime(latestTx.time)}</div>
-                  <div class="stacked-actions">
-                    <button class="button-secondary button-full" onclick="showReceipt('${esc(latestTx.id)}')">Latest receipt</button>
-                    <button class="button-secondary button-full" onclick="openAuditModal()">Create audit proof</button>
-                    <button class="button-link button-full" onclick="openVerifierFromSuccess('${esc(latestTx.id)}')">Verify receipt</button>
-                  </div>
-                `
-                : `
-                  <div class="latest-label">Receipt tools</div>
-                  <div class="latest-empty">Send a payment to generate a receipt and audit trail.</div>
-                  <div class="stacked-actions">
-                    <button class="button-secondary button-full" onclick="openAuditModal()" ${state.transactions.length ? '' : 'disabled'}>Create audit proof</button>
-                    <a class="button-link button-full" href="/verify.html">Open verifier</a>
-                  </div>
-                `
-            }
-          </div>
-        </aside>
+        </div>
 
-        <div class="work-stack">
-          <section class="payment-panel" id="composer">
-            <div class="panel-head">
-              <div>
-                <h2>Send private payment</h2>
-              </div>
-              ${state.timings ? `<div class="panel-stat-inline">${state.timings.prove.toFixed(0)}ms prove</div>` : ''}
-            </div>
-            <div class="payment-grid">
-              <div class="composer-form">
-                <div class="field">
-                  <label for="recipient-input">Recipient</label>
-                  <input id="recipient-input" type="text" value="${esc(state.currentRecipient)}" placeholder="Recipient name or wallet reference" oninput="updateRecipient(this.value)">
-                </div>
-                <div class="field">
-                  <label for="amount-input">Amount</label>
-                  <input id="amount-input" type="text" value="${esc(state.currentAmountInput)}" inputmode="decimal" placeholder="0.00" oninput="updateAmount(this.value)">
-                </div>
-                <div class="composer-presets">
-                  <button class="asset-tab ${currentAmount() === 250000 ? 'active' : ''}" onclick="setAmountPreset('250,000.00')">$250K</button>
-                  <button class="asset-tab ${currentAmount() === 5000000 ? 'active' : ''}" onclick="setAmountPreset('5,000,000.00')">$5M</button>
-                  <button class="asset-tab ${currentAmount() === 25000000 ? 'active' : ''}" onclick="setAmountPreset('25,000,000.00')">$25M</button>
-                  <button class="asset-tab ${currentAmount() === 50000000 ? 'active' : ''}" onclick="setAmountPreset('50,000,000.00')">$50M</button>
-                </div>
-                <div class="field">
-                  <label>Fee</label>
-                  <div class="asset-tabs composer-route-tabs">
-                    <button class="asset-tab ${state.feeMode === 'same_asset' ? 'active' : ''}" onclick="switchFeeMode('same_asset')">Pay in ${state.activeAsset}</button>
-                    <button class="asset-tab ${state.feeMode === 'hush' ? 'active' : ''}" onclick="switchFeeMode('hush')">Pay in HUSH</button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="quote-panel">
-                <div class="quote-list">
-                  <div class="quote-row"><span>Payment</span><strong id="summary-amount">${fmtMoney(currentAmount())} ${state.activeAsset}</strong></div>
-                  <div class="quote-row"><span>Fee</span><strong id="summary-fee">${quote ? `${fmtFee(quote.fee_amount / AMT_SCALE)} ${currentFeeAsset()}` : '--'}</strong></div>
-                  <div class="quote-row"><span>Total debit</span><strong id="summary-total">${currentTotalLabel(quote)}</strong></div>
-                  <div class="quote-row"><span>Route</span><strong id="summary-route">${routeArrowLabel}</strong></div>
-                </div>
-                <button class="button-primary button-full" onclick="sendPayment()" ${canSendCurrentPayment() ? '' : 'disabled'}>${state.isSending ? 'Generating proof...' : 'Send private payment'}</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="ledger-panel" id="activity-card">
-            <div class="panel-head">
-              <div>
-                <div class="panel-kicker">Ledger</div>
-                <h2>Payments and receipts</h2>
-              </div>
-            </div>
-            ${renderActivity(state.activity)}
-          </section>
+        <div class="quote-panel">
+          <div class="quote-list">
+            <div class="quote-row"><span>Payment</span><strong id="summary-amount">${fmtMoney(currentAmount())} ${state.activeAsset}</strong></div>
+            <div class="quote-row"><span>Fee</span><strong id="summary-fee">${quote ? `${fmtFee(quote.fee_amount / AMT_SCALE)} ${currentFeeAsset()}` : '--'}</strong></div>
+            <div class="quote-row"><span>Total debit</span><strong id="summary-total">${currentTotalLabel(quote)}</strong></div>
+            <div class="quote-row"><span>Route</span><strong id="summary-route">${routeArrowLabel}</strong></div>
+          </div>
+          <button class="button-primary button-full" onclick="sendPayment()" ${canSendCurrentPayment() ? '' : 'disabled'}>${state.isSending ? 'Generating proof...' : 'Send private payment'}</button>
         </div>
       </div>
     </section>
   `;
+}
+
+function renderStage() {
+  switch (state.activeView) {
+    case 'wallet': {
+      const realUsd = (state.balancesUnits.USDC + state.balancesUnits.USDT) / AMT_SCALE;
+      const cosmeticUsd = COSMETIC_USD_VALUE.EURC + COSMETIC_USD_VALUE.HUSH;
+      const headline = realUsd + cosmeticUsd;
+      return renderBalanceCard(state, { handle: USER_HANDLE, headlineBalance: headline })
+        + renderBalancesTable(state, balanceDisplayFor);
+    }
+    case 'activity': {
+      const latestTx = state.successTxId ? getTransaction(state.successTxId) : null;
+      const tools = latestTx
+        ? `
+          <div class="card stub-card" style="display:flex; gap:12px; flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="showReceipt('${esc(latestTx.id)}')">Latest receipt</button>
+            <button class="btn btn-ghost" onclick="openAuditModal()">Create audit key</button>
+            <button class="btn btn-ghost" onclick="openVerifierFromSuccess('${esc(latestTx.id)}')">Verify receipt</button>
+          </div>`
+        : `
+          <div class="card stub-card" style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+            <span style="color:var(--ink-2);">Send a payment from the Wallet view to generate a receipt and audit key.</span>
+            <button class="btn btn-ghost" onclick="openAuditModal()" ${state.transactions.length ? '' : 'disabled'}>Create audit key</button>
+            <a class="btn btn-ghost" href="/verify.html">Open verifier</a>
+          </div>`;
+      return tools + `
+        <section class="card ledger-panel" id="activity-card">
+          <div class="panel-head"><div><div class="panel-kicker">Ledger</div><h2>Payments and receipts</h2></div></div>
+          ${renderActivity(state.activity)}
+        </section>`;
+    }
+    case 'compliance':
+      return renderComingSoon(
+        'Compliance',
+        'Audit keys are issued from the Wallet view. Open the modal directly:'
+      ) + `<div class="card stub-card"><button class="btn btn-primary" onclick="openAuditModal()">Open audit modal</button></div>`;
+    case 'contacts':
+      return renderComingSoon('Contacts', 'Contact list coming soon.');
+    case 'topup':
+      return renderComingSoon('Top up', 'Top up flow coming soon.');
+    case 'payout':
+      return renderComingSoon('Payout', 'Payout flow coming soon.');
+    default:
+      return renderBalanceCard(state, { handle: USER_HANDLE, headlineBalance: 2847.50 })
+        + renderBalancesTable(state, balanceDisplayFor);
+  }
 }
 
 function renderTruthOverlayView() {
@@ -377,7 +443,7 @@ function renderTruthOverlayView() {
             <div class="metric-card"><span>Accounting</span><strong>${state.timings.accounting.toFixed(1)}ms</strong></div>
           ` : ''}
           ${hasAuditMetric ? `
-            <div class="metric-card"><span>Audit proof</span><strong>${state.auditResult.proveMs.toFixed(0)}ms</strong></div>
+            <div class="metric-card"><span>Audit key</span><strong>${state.auditResult.proveMs.toFixed(0)}ms</strong></div>
           ` : ''}
         </div>
       ` : `
@@ -537,12 +603,12 @@ async function sendPayment() {
   const hushDebit = currentHushDebit(quote);
 
   if (quote.payment_debit > currentBalanceUnits()) {
-    showToast('Insufficient payment-asset balance for the selected route.', 'error');
+    showToast('Insufficient balance.', 'error');
     return;
   }
 
   if (quote.hush_fee_debit > state.hushBalanceUnits) {
-    showToast('Insufficient HUSH balance for the sidecar fee path.', 'error');
+    showToast('Insufficient balance.', 'error');
     return;
   }
 
@@ -853,8 +919,8 @@ window.openAuditModal = function openAuditModal() {
   container.innerHTML = `
     <div class="modal-top">
       <div>
-        <h3 class="modal-title">Create audit summary</h3>
-        <p class="modal-copy">Generate a browser-verified summary for a chosen period. This is a narrow demo of the time-window flow, not a full reporting product.</p>
+        <h3 class="modal-title">Create audit key</h3>
+        <p class="modal-copy">Generate a browser-verified audit key for a chosen period. This is a narrow demo of the time-window flow, not a full reporting product.</p>
       </div>
       <button class="close-button" onclick="closeOverlay('audit-overlay')">x</button>
     </div>
@@ -876,7 +942,7 @@ window.openAuditModal = function openAuditModal() {
       ${renderReceiptRow('amounts', 'Individual amounts', 'Optional', false, 'Useful only when line-item payment values must be disclosed.')}
     </div>
     <div class="modal-actions">
-      <button class="button-primary" onclick="generateAuditSummary()" ${state.auditLoading ? 'disabled' : ''}>${state.auditLoading ? 'Generating...' : 'Generate summary'}</button>
+      <button class="button-primary" onclick="generateAuditSummary()" ${state.auditLoading ? 'disabled' : ''}>${state.auditLoading ? 'Generating...' : 'Generate audit key'}</button>
     </div>
   `;
   document.getElementById('audit-overlay').classList.add('show');
@@ -899,7 +965,7 @@ window.generateAuditSummary = async function generateAuditSummary() {
     trigger.textContent = 'Generating...';
   }
 
-  pushLog('info', 'Generating time-window audit proof in the browser.');
+  pushLog('info', 'Generating audit key in the browser.');
 
   await new Promise((resolve) => setTimeout(resolve, 80));
 
@@ -920,7 +986,7 @@ window.generateAuditSummary = async function generateAuditSummary() {
       state.auditLoading = false;
       if (trigger) {
         trigger.disabled = false;
-        trigger.textContent = 'Generate summary';
+        trigger.textContent = 'Generate audit key';
       }
       showToast(result.message, 'error');
       return;
@@ -946,22 +1012,22 @@ window.generateAuditSummary = async function generateAuditSummary() {
       log_num_rows: result.log_num_rows,
     };
 
-    pushLog('success', `Time-window audit proof generated in ${result.prove_time_ms.toFixed(0)}ms, verified in ${result.verify_time_ms.toFixed(0)}ms.`);
+    pushLog('success', `Audit key generated in ${result.prove_time_ms.toFixed(0)}ms, verified in ${result.verify_time_ms.toFixed(0)}ms.`);
 
     state.activity.unshift({
       kind: 'audit',
       icon: 'AUD',
-      title: `Audit proof for ${state.activeAsset}`,
+      title: `Audit key for ${state.activeAsset}`,
       copy: `${txs.length} payment${txs.length !== 1 ? 's' : ''} | ${fmtMoney(totalVolume)} total | ${result.prove_time_ms.toFixed(0)}ms`,
       id: 'audit-' + Date.now(),
       time: new Date(),
     });
 
     renderAuditResult();
-    showToast('Audit proof generated.', 'success');
+    showToast('Audit key generated.', 'success');
   } catch (error) {
-    pushLog('error', `Audit proof failed: ${error.message}`);
-    showToast(`Audit proof failed: ${error.message}`, 'error');
+    pushLog('error', `Audit key failed: ${error.message}`);
+    showToast(`Audit key failed: ${error.message}`, 'error');
   }
 
   state.auditLoading = false;
@@ -992,8 +1058,8 @@ function renderAuditResult() {
   container.innerHTML = `
     <div class="modal-top">
       <div>
-        <h3 class="modal-title">Audit summary ready</h3>
-        <p class="modal-copy">The proof covers the selected payment window and exports a verifiable audit payload.</p>
+        <h3 class="modal-title">Audit key ready</h3>
+        <p class="modal-copy">The key covers the selected payment window and exports a verifiable audit payload.</p>
       </div>
       <button class="close-button" onclick="closeOverlay('audit-overlay')">x</button>
     </div>
@@ -1009,7 +1075,7 @@ function renderAuditResult() {
       </div>
     </div>
     <div class="modal-actions">
-      <button class="button-secondary" onclick="openAuditModal()">New proof</button>
+      <button class="button-secondary" onclick="openAuditModal()">New key</button>
       <button class="button-secondary" onclick="copyAuditProof()">Copy JSON</button>
       <button class="button-primary" onclick="closeOverlay('audit-overlay')">Done</button>
     </div>
@@ -1020,7 +1086,7 @@ window.copyAuditProof = async function copyAuditProof() {
   if (!state.auditResult) return;
   const r = state.auditResult;
   const payload = JSON.stringify({
-    type: 'hush-audit-proof',
+    type: 'hush-audit-key',
     version: 2,
     asset: state.activeAsset,
     amt_scale: AMT_SCALE,
@@ -1047,7 +1113,7 @@ window.copyAuditProof = async function copyAuditProof() {
   }, null, 2);
   try {
     await navigator.clipboard.writeText(payload);
-    showToast('Audit proof copied to clipboard.', 'success');
+    showToast('Audit key copied to clipboard.', 'success');
   } catch {
     showToast('Copy failed.', 'error');
   }
@@ -1067,3 +1133,66 @@ function stamp() {
 }
 
 
+
+// ============================================================================
+// Wallet UI globals: handlers wired by walletShell render templates.
+// ============================================================================
+
+window.toggleTheme = function toggleTheme() {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+  render();
+};
+
+window.setTheme = function setTheme(theme) {
+  state.theme = theme;
+  render();
+};
+
+window.setActiveView = function setActiveView(viewId) {
+  state.activeView = viewId;
+  if (viewId === 'compliance') {
+    // Compliance view shows a stub plus opens the audit modal
+    state.activeView = 'compliance';
+  }
+  render();
+};
+
+window.setBalancesTab = function setBalancesTab(tab) {
+  state.balancesTab = tab;
+  render();
+};
+
+window.openComposer = function openComposer() {
+  state.composerOpen = true;
+  render();
+};
+
+window.closeComposerOverlay = function closeComposerOverlay(event) {
+  if (event && event.target !== event.currentTarget) return;
+  state.composerOpen = false;
+  render();
+};
+
+window.toggleTweaks = function toggleTweaks() {
+  state.tweaksOpen = !state.tweaksOpen;
+  render();
+};
+
+window.setTweak = function setTweak(key, value) {
+  if (key === 'radius' || key === 'fontSize') value = Number(value);
+  state.tweaks[key] = value;
+  render();
+};
+
+window.askComingSoon = function askComingSoon(label) {
+  showToast(`${label}: coming soon.`, 'info');
+};
+
+window.copyAddress = async function copyAddress() {
+  try {
+    await navigator.clipboard.writeText('0xf3A2…9c7b');
+    showToast('Address copied.', 'success');
+  } catch {
+    showToast('Copy failed.', 'error');
+  }
+};

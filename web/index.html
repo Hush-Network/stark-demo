@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HushPay | Browser Proof Demo</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'">
-  <link rel="icon" href="/images/hush-favicon.ico" type="image/x-icon">
+  <link rel="icon" type="image/png" href="/images/hushlogo.png">
+  <link rel="apple-touch-icon" href="/images/hushlogo.png">
   <style>
     @font-face {
       font-family: 'Inter';
@@ -3407,28 +3408,19 @@
     </div>
   </div>
 
-  <div class="app-shell" id="app">
-    <div class="app-frame">
-      <header class="topbar">
-        <a href="https://hushnetwork.io" class="brand">
-          <img src="/images/hushlogo.png" alt="HushPay" class="brand-icon">
-          <div class="brand-stack">
-            <span class="brand-name">HushPay</span>
-            <span class="brand-subtitle">Private stablecoin demo</span>
-          </div>
-        </a>
-        <div class="topbar-actions">
-          <button class="topbar-button" onclick="restartDemo()">Reset session</button>
-          <button class="topbar-button" onclick="scrollToTruth()">Technical details</button>
-          <a class="topbar-link" href="/verify.html">Verify receipt</a>
+  <div class="app-shell app-root" id="app" data-theme="dark">
+    <div class="app">
+      <aside class="sidebar" id="sidebar"></aside>
+      <div class="main-shell">
+        <div class="topbar" id="topbar"></div>
+        <div class="main-wrap">
+          <main class="main-col" id="stage"></main>
+          <aside class="side-col" id="rail"></aside>
         </div>
-      </header>
-
-      <div class="workspace">
-        <main class="stage" id="stage"></main>
-        <aside class="rail" id="rail"></aside>
       </div>
     </div>
+    <aside class="tweaks-panel" id="tweaks"></aside>
+    <div class="composer-overlay" id="composer-overlay"></div>
   </div>
 
   <div class="overlay" id="receipt-overlay" onclick="closeOverlay('receipt-overlay', event)">

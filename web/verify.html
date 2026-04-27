@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HushPay | Verify Receipt</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'">
-  <link rel="icon" href="/images/hush-favicon.ico" type="image/x-icon">
+  <link rel="icon" type="image/png" href="/images/hushlogo.png">
+  <link rel="apple-touch-icon" href="/images/hushlogo.png">
   <style>
     @font-face {
       font-family: 'Inter';
@@ -241,7 +242,7 @@
         <img src="/images/hushlogo.png" alt="H" class="brand-icon">
         <div style="display:grid;gap:1px;">
           <span class="brand-name">HushPay</span>
-          <span class="brand-subtitle">Receipt verifier</span>
+          <span class="brand-subtitle">Receipt and audit key verifier</span>
         </div>
       </a>
       <div class="topbar-actions">
@@ -253,16 +254,16 @@
     <div class="container">
       <div class="header">
         <div>
-          <h2>Verify a shared receipt.</h2>
-          <p class="subtitle">Paste receipt JSON from HushPay to validate attached proof bytes when present, recompute bound fields when possible, and inspect only the fields the sender chose to disclose.</p>
+          <h2>Verify a shared receipt or audit key.</h2>
+          <p class="subtitle">Paste JSON from HushPay to validate attached proof bytes when present, recompute bound fields when possible, and inspect only the fields the sender chose to disclose.</p>
         </div>
       </div>
 
       <div class="verify-grid">
         <div class="panel">
-          <div class="note">This page checks proof bytes and receipt bindings. It does not simulate a live validator network or a full reporting product.</div>
+          <div class="note">This page checks receipt bindings and audit key payloads. It does not simulate a live validator network or a full reporting product.</div>
           <textarea id="receipt-input" placeholder="Paste receipt JSON here..."></textarea>
-          <button class="btn-verify" id="btn-verify">Verify receipt</button>
+          <button class="btn-verify" id="btn-verify">Verify payload</button>
 
           <div class="result" id="result">
             <div class="result-banner" id="result-banner"></div>
@@ -274,11 +275,11 @@
           <div class="side-list">
             <div class="side-row">
               <strong>What this page checks</strong>
-              <span>Proof bytes, receipt bindings, disclosed values, and whether the payload is internally coherent.</span>
+              <span>Proof bytes, receipt bindings, audit key claims, disclosed values, and whether the payload is internally coherent.</span>
             </div>
             <div class="side-row">
               <strong>What stays hidden</strong>
-              <span>Full wallet history, unrelated counterparties, and any fields the sender did not include in the receipt.</span>
+              <span>Full wallet history, unrelated counterparties, and any fields the sender did not include in the receipt or audit key.</span>
             </div>
             <div class="side-row">
               <strong>What it is not</strong>

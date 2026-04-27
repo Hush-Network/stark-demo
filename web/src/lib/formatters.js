@@ -36,11 +36,20 @@ export function relativeTime(date) {
 
 export function sanitizeAmountInput(raw) {
   const clean = raw.replace(/[^0-9.]/g, '');
-  const parts = clean.split('.');
+  // Allow a single decimal separator. Collapse any extras after the first.
+  const firstDot = clean.indexOf('.');
+  const safe = firstDot === -1
+    ? clean
+    : clean.slice(0, firstDot + 1) + clean.slice(firstDot + 1).replace(/\./g, '');
+  const parts = safe.split('.');
   const whole = parts[0] || '0';
-  const decimals = parts[1] ? parts[1].slice(0, 2) : '';
+  // Preserve the trailing dot the user just typed: parts[1] is '' when the
+  // input ends in '.', undefined when no dot was typed at all.
+  const hasDot = parts.length > 1;
+  const decimals = hasDot ? parts[1].slice(0, 2) : null;
   const formattedWhole = Number.parseInt(whole, 10).toLocaleString('en-US');
-  return decimals.length ? `${formattedWhole}.${decimals}` : formattedWhole;
+  if (decimals === null) return formattedWhole;
+  return `${formattedWhole}.${decimals}`;
 }
 
 export function parseAmountInput(value) {
