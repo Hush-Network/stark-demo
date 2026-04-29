@@ -106,6 +106,10 @@ const svg = {
       <circle cx="16" cy="16" r="14" stroke="var(--brand-accent)" stroke-width="1.5"/>
       <circle cx="16" cy="16" r="6" fill="var(--brand-accent)" opacity=".85"/>
     </svg>`,
+  menu: () => `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 6h16M4 12h16M4 18h16"/>
+    </svg>`,
 };
 
 // ---------- Sidebar ----------
@@ -170,6 +174,7 @@ export function renderTopbar(theme, handle = 'UserName.hush') {
   const isDark = theme === 'dark';
   const initial = (handle || 'U').charAt(0).toUpperCase();
   return `
+    <button class="menu-btn" onclick="toggleSidebar()" aria-label="Open menu">${svg.menu()}</button>
     <button class="ask" onclick="openComposer()">
       ${svg.sparkle()}
       <span class="ask-txt">Ask Hush: send $50 to alice.hush, split my last dinner...</span>

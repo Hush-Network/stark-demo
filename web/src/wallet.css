@@ -834,3 +834,163 @@
    the wallet shell renders its own topbar via #topbar. */
 .app-root .app-frame > header.topbar:not(#topbar) { display: none; }
 .app-root .workspace { display: none; }
+
+/* ---------- Mobile menu button (hidden on desktop) ---------- */
+.app-root .menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--w-line);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ---------- Sidebar backdrop (mobile drawer) ---------- */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 45;
+}
+.app-root.sidebar-open .sidebar-backdrop { display: block; }
+
+/* ============================================================================
+ * Mobile pass: <= 768px
+ * ============================================================================ */
+@media (max-width: 768px) {
+  /* Layout: drop the sidebar column; main fills the viewport */
+  .app-root .app {
+    grid-template-columns: 1fr;
+  }
+
+  /* Sidebar becomes an off-canvas drawer */
+  .app-root .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(280px, 82vw);
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease-out;
+    box-shadow: 0 0 32px rgba(0, 0, 0, 0.4);
+  }
+  .app-root.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  /* Topbar: show menu button, tighten spacing, hide kbd hint */
+  .app-root .menu-btn { display: inline-flex; }
+  .app-root .topbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .app-root .ask {
+    padding: 8px 12px;
+    min-width: 0;
+  }
+  .app-root .ask-txt {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .app-root .ask .kbd { display: none; }
+  .app-root .top-right { gap: 6px; }
+  .app-root .icon-btn,
+  .app-root .avatar-sm { width: 34px; height: 34px; }
+
+  /* Main content padding tighter */
+  .app-root .main-wrap {
+    padding: 12px;
+    gap: 12px;
+  }
+  .app-root .main-col,
+  .app-root .side-col { gap: 12px; }
+
+  /* BalanceCard: shorter hero, smaller avatar, vertical stack */
+  .app-root .hero-band { height: 88px; }
+  .app-root .hero-avatar {
+    top: 50px;
+    left: 16px;
+  }
+  .app-root .avatar-lg {
+    width: 64px;
+    height: 64px;
+    font-size: 22px;
+    border-width: 3px;
+  }
+  .app-root .balance-meta {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 38px 16px 14px 88px;
+  }
+  .app-root .identity-name { font-size: 22px; }
+  .app-root .identity-sub { font-size: 13px; flex-wrap: wrap; }
+  .app-root .balance-wrap {
+    text-align: left;
+    margin-left: -72px;
+  }
+  .app-root .balance-num {
+    font-size: 28px;
+    line-height: 1.05;
+  }
+  .app-root .balance-label { letter-spacing: 0.12em; }
+
+  /* Actions: tight, copy pill on its own row */
+  .app-root .actions-row {
+    padding: 8px 14px 14px;
+    gap: 6px;
+  }
+  .app-root .actions-row .spacer { display: none; }
+  .app-root .actions-row .copy-pill {
+    flex: 1 1 100%;
+    justify-content: center;
+    order: 99;
+  }
+  .app-root .btn,
+  .app-root .copy-pill { font-size: 13px; padding: 8px 12px; }
+  .app-root .btn-round { padding: 0; width: 34px; height: 34px; }
+
+  /* Asset rows: tighter padding */
+  .app-root .balances-card { padding: 6px 14px 12px; }
+  .app-root .asset-row { padding: 12px 4px; }
+  .app-root .asset-bubble { width: 36px; height: 36px; }
+
+  /* Activity card */
+  .app-root .activity-card { padding: 14px 14px 10px; }
+
+  /* Tweaks panel: full-width drawer on mobile */
+  .app-root .tweaks-panel { width: 100%; }
+
+  /* Composer modal: tighter on mobile */
+  .composer-overlay .composer-sheet { width: 96vw; max-height: 94vh; border-radius: 14px; }
+  .composer-overlay .composer-modal-head { padding: 14px 16px; }
+  .composer-overlay .composer-modal-body { padding: 14px 16px 18px; }
+}
+
+/* ============================================================================
+ * Smallest screens: <= 420px
+ * ============================================================================ */
+@media (max-width: 420px) {
+  .app-root .topbar { padding: 8px 10px; gap: 6px; }
+  .app-root .icon-btn,
+  .app-root .avatar-sm { width: 32px; height: 32px; }
+  .app-root .menu-btn { width: 32px; height: 32px; }
+
+  /* Drop the bell on the smallest screens to keep the topbar uncluttered */
+  .app-root .top-right > .icon-btn:not(.theme-btn) { display: none; }
+
+  .app-root .balance-num { font-size: 24px; }
+  .app-root .identity-name { font-size: 20px; }
+
+  .app-root .actions-row .btn { flex: 1 1 calc(50% - 3px); justify-content: center; }
+  .app-root .actions-row .btn-round { flex: 0 0 auto; }
+}

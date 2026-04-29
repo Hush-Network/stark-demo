@@ -80,6 +80,7 @@ const state = {
   activeView: 'wallet',
   composerOpen: false,
   tweaksOpen: false,
+  sidebarOpen: false,
   balancesTab: 'balances',
   tweaks: {
     accent: 'mint',
@@ -158,6 +159,7 @@ function applyShellAttributes() {
   app.style.setProperty('--w-radius', `${state.tweaks.radius}px`);
   app.style.setProperty('--w-size-base', `${state.tweaks.fontSize}px`);
   if (tweaksEl) tweaksEl.classList.toggle('open', state.tweaksOpen);
+  app.classList.toggle('sidebar-open', state.sidebarOpen);
 }
 
 function render() {
@@ -1171,7 +1173,21 @@ window.setActiveView = function setActiveView(viewId) {
     // Compliance view shows a stub plus opens the audit modal
     state.activeView = 'compliance';
   }
+  // Auto-close the mobile sidebar drawer after a nav selection
+  state.sidebarOpen = false;
   render();
+};
+
+window.toggleSidebar = function toggleSidebar() {
+  state.sidebarOpen = !state.sidebarOpen;
+  render();
+};
+
+window.closeSidebar = function closeSidebar() {
+  if (state.sidebarOpen) {
+    state.sidebarOpen = false;
+    render();
+  }
 };
 
 window.setBalancesTab = function setBalancesTab(tab) {
