@@ -14,6 +14,18 @@ export function fmtHash4(arr) {
   return '0x' + arr.map((v) => (v >>> 0).toString(16).padStart(8, '0')).join('');
 }
 
+export function hexToU32Array(hex) {
+  if (hex == null) return new Uint32Array(4);
+  const normalized = typeof hex === 'string' ? hex.replace(/^0x/i, '') : '';
+  if (normalized.length !== 32) return new Uint32Array(4);
+  return new Uint32Array([
+    parseInt(normalized.slice(0, 8), 16),
+    parseInt(normalized.slice(8, 16), 16),
+    parseInt(normalized.slice(16, 24), 16),
+    parseInt(normalized.slice(24, 32), 16),
+  ]);
+}
+
 export function fmtMoney(value) {
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

@@ -81,7 +81,7 @@ pub struct WalletSubmissionRequest {
     pub recipient_owner: u32,
     pub payment_balance: u64,
     pub hush_balance: u64,
-    pub credential_expiry: Option<u32>,
+    pub attestation_expiry: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -190,9 +190,9 @@ pub fn dual_fee_review_snapshot() -> DualFeeReviewSnapshot {
             ReviewItem {
                 group: "represented_only".to_string(),
                 key: "wallet_onboarding".to_string(),
-                label: "Wallet setup and credential issuance".to_string(),
+                label: "Wallet setup and provenance attestation".to_string(),
                 level: ImplementationLevel::RepresentedOnly,
-                detail: "Wallet setup and issuer approval remain represented in the demo, even though the browser can run the credential issuance circuit locally.".to_string(),
+                detail: "Wallet setup and boundary-actor approval remain represented in the demo, even though the browser can run the provenance attestation circuit locally.".to_string(),
             },
             ReviewItem {
                 group: "represented_only".to_string(),
@@ -526,7 +526,7 @@ mod tests {
             recipient_owner: 77_777,
             payment_balance: 10_000,
             hush_balance: 12,
-            credential_expiry: None,
+            attestation_expiry: None,
         }
     }
 
@@ -539,7 +539,7 @@ mod tests {
             recipient_owner: 66_666,
             payment_balance: 11_000,
             hush_balance: 100,
-            credential_expiry: None,
+            attestation_expiry: None,
         }
     }
 
@@ -695,7 +695,7 @@ mod tests {
             recipient_owner: 50_000,
             payment_balance: 1_500_000,
             hush_balance: 250,
-            credential_expiry: None,
+            attestation_expiry: None,
         };
         let result = submit_wallet_payment(&request)
             .expect("1.5M balance / 125k payment should prove successfully");

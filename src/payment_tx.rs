@@ -21,7 +21,7 @@ pub enum TxKind {
     Payment = 1,
     ValidatorAction = 2,
     IssuerAction = 3,
-    CredentialStateAction = 4,
+    ProvenanceStateAction = 4,
     ProtocolAdminAction = 5,
 }
 
@@ -35,7 +35,7 @@ impl TxKind {
             1 => Ok(Self::Payment),
             2 => Ok(Self::ValidatorAction),
             3 => Ok(Self::IssuerAction),
-            4 => Ok(Self::CredentialStateAction),
+            4 => Ok(Self::ProvenanceStateAction),
             5 => Ok(Self::ProtocolAdminAction),
             _ => Err(format!("unsupported tx_kind {value}")),
         }
@@ -45,7 +45,7 @@ impl TxKind {
 pub const TX_KIND_PAYMENT: u32 = TxKind::Payment as u32;
 pub const TX_KIND_VALIDATOR_ACTION: u32 = TxKind::ValidatorAction as u32;
 pub const TX_KIND_ISSUER_ACTION: u32 = TxKind::IssuerAction as u32;
-pub const TX_KIND_CREDENTIAL_STATE_ACTION: u32 = TxKind::CredentialStateAction as u32;
+pub const TX_KIND_PROVENANCE_STATE_ACTION: u32 = TxKind::ProvenanceStateAction as u32;
 pub const TX_KIND_PROTOCOL_ADMIN_ACTION: u32 = TxKind::ProtocolAdminAction as u32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -445,7 +445,7 @@ pub fn validate_tx_kind_fee_asset_policy(
         }
         TxKind::ValidatorAction
         | TxKind::IssuerAction
-        | TxKind::CredentialStateAction
+        | TxKind::ProvenanceStateAction
         | TxKind::ProtocolAdminAction => {
             if fee_asset != AssetId::Hush {
                 return Err(format!(
@@ -464,7 +464,7 @@ pub fn is_hush_only_action(tx_kind: u32) -> Result<bool, String> {
         TxKind::try_from_u32(tx_kind)?,
         TxKind::ValidatorAction
             | TxKind::IssuerAction
-            | TxKind::CredentialStateAction
+            | TxKind::ProvenanceStateAction
             | TxKind::ProtocolAdminAction
     ))
 }

@@ -2,9 +2,7 @@
 //!
 //! Proves that a private note carries a valid attestation signed by an
 //! approved boundary actor (exchange, bridge, issuer, PSP, merchant) at
-//! screened entry. Encoded historically as an issuer-keyed credential
-//! commitment with Merkle inclusion in the boundary actor set; the field
-//! and helper names retain that encoding for now.
+//! screened entry.
 //!
 //! All hash outputs are `HashOut = [M31; 4]` (4 x M31, ~124-bit collision resistance).
 //! Attestation commitment uses a 2-block sponge (10 inputs: issuer[4], owner[4], expiry, secret).
@@ -52,9 +50,9 @@ const MERKLE_LEVEL_COLS: usize = 9 + poseidon2_air::HASH_INTERMEDIATE_COLS;
 
 /// Total trace columns:
 ///   witness:  issuer_key(1) + subject(4) + expiry(1) + secret(1) = 7
-///   public:   pub_issuer_root(4) + pub_cred_cm(4) = 8
+///   public:   pub_issuer_root(4) + pub_attestation_commitment(4) = 8
 ///   issuer_id hash:      HASH_INTERMEDIATE_COLS  (single-block hash2)
-///   credential_commitment: SPONGE_2BLOCK_INTERMEDIATE_COLS  (10-input, 2-block sponge)
+///   attestation_commitment: SPONGE_2BLOCK_INTERMEDIATE_COLS  (10-input, 2-block sponge)
 ///   Merkle path:          MERKLE_DEPTH * MERKLE_LEVEL_COLS
 const NUM_COLS: usize = 15
     + poseidon2_air::HASH_INTERMEDIATE_COLS
@@ -64,7 +62,7 @@ const NUM_COLS: usize = 15
 #[derive(Clone, Debug)]
 pub struct AttestationWitness {
     pub issuer_root: [u32; 4],
-    pub credential_commitment: [u32; 4],
+    pub attestation_commitment: [u32; 4],
     pub issuer_key: u32,
     /// `derive_owner(sk)` output, a HashOut.
     pub subject: [u32; 4],
@@ -96,7 +94,8 @@ impl FrameworkEval for IssuanceEval {
 
         // --- public values (4 limbs each) ---
         let pub_issuer_root: [E::F; 4] = core::array::from_fn(|_| eval.next_trace_mask()); // cols 7-10
-        let pub_cred_cm: [E::F; 4] = core::array::from_fn(|_| eval.next_trace_mask()); // cols 11-14
+        let pub_attestation_commitment: [E::F; 4] =
+            core::array::from_fn(|_| eval.next_trace_mask()); // cols 11-14
 
         // --- derive issuer_id = hash2(issuer_key, 0, DOMAIN_ISSUER_ID) → [E::F; 4] ---
         let issuer_id = poseidon2_air::constrain_hash2(
@@ -106,7 +105,7 @@ impl FrameworkEval for IssuanceEval {
             poseidon2::DOMAIN_ISSUER_ID,
         );
 
-        // --- credential commitment = sponge_2block(issuer[0..4], owner[0..4], expiry, secret) ---
+        // --- attestation commitment = sponge_2block(issuer[0..4], owner[0..4], expiry, secret) ---
         let sponge_inputs: Vec<E::F> = vec![
             issuer_id[0].clone(),
             issuer_id[1].clone(),
@@ -125,7 +124,7 @@ impl FrameworkEval for IssuanceEval {
             poseidon2::DOMAIN_CRED_CM,
         );
         for k in 0..4 {
-            eval.add_constraint(cm_out[k].clone() - pub_cred_cm[k].clone());
+            eval.add_constraint(cm_out[k].clone() - pub_attestation_commitment[k].clone());
         }
 
         // --- Merkle path verification (HashOut siblings, constrain_hash_pair) ---
@@ -172,7 +171,7 @@ pub type IssuanceComponent = FrameworkComponent<IssuanceEval>;
 
 pub struct IssuancePublicData {
     pub issuer_root: [u32; 4],
-    pub credential_commitment: [u32; 4],
+    pub attestation_commitment: [u32; 4],
 }
 
 impl IssuancePublicData {
@@ -180,7 +179,7 @@ impl IssuancePublicData {
         for &limb in &self.issuer_root {
             channel.mix_u64(limb as u64);
         }
-        for &limb in &self.credential_commitment {
+        for &limb in &self.attestation_commitment {
             channel.mix_u64(limb as u64);
         }
     }
@@ -199,11 +198,11 @@ pub fn prove_provenance_attestation(witness: &AttestationWitness) -> Result<(), 
     let secret = M31::from(witness.secret);
 
     let issuer_id = poseidon2::derive_issuer_id(issuer_key);
-    let computed_cm = poseidon2::credential_commitment(issuer_id, subject, expiry, secret);
+    let computed_cm = poseidon2::attestation_commitment(issuer_id, subject, expiry, secret);
 
-    let expected_cm = poseidon2::u32_array_to_hashout(witness.credential_commitment);
+    let expected_cm = poseidon2::u32_array_to_hashout(witness.attestation_commitment);
     if computed_cm != expected_cm {
-        return Err("Credential commitment does not match expected value".to_string());
+        return Err("Attestation commitment does not match expected value".to_string());
     }
 
     // Verify issuer Merkle path
@@ -242,7 +241,7 @@ pub fn prove_provenance_attestation(witness: &AttestationWitness) -> Result<(), 
     let mut cols: Vec<BaseColumn> = (0..NUM_COLS).map(|_| BaseColumn::zeros(num_rows)).collect();
 
     let issuer_root_ho = poseidon2::u32_array_to_hashout(witness.issuer_root);
-    let cred_cm_ho = poseidon2::u32_array_to_hashout(witness.credential_commitment);
+    let attestation_cm_ho = poseidon2::u32_array_to_hashout(witness.attestation_commitment);
 
     for r in 0..num_rows {
         let mut c = 0usize;
@@ -264,9 +263,9 @@ pub fn prove_provenance_attestation(witness: &AttestationWitness) -> Result<(), 
             cols[c].set(r, issuer_root_ho[k]);
             c += 1;
         }
-        // pub_cred_cm (4)
+        // pub_attestation_commitment (4)
         for k in 0..4 {
-            cols[c].set(r, cred_cm_ho[k]);
+            cols[c].set(r, attestation_cm_ho[k]);
             c += 1;
         }
         // issuer_id hash intermediates
@@ -274,7 +273,7 @@ pub fn prove_provenance_attestation(witness: &AttestationWitness) -> Result<(), 
             cols[c + i].set(r, issuer_id_cols[i]);
         }
         c += issuer_id_cols.len();
-        // credential commitment sponge intermediates
+        // attestation commitment sponge intermediates
         for i in 0..cm_cols.len() {
             cols[c + i].set(r, cm_cols[i]);
         }
@@ -291,7 +290,7 @@ pub fn prove_provenance_attestation(witness: &AttestationWitness) -> Result<(), 
 
     let public_data = IssuancePublicData {
         issuer_root: witness.issuer_root,
-        credential_commitment: witness.credential_commitment,
+        attestation_commitment: witness.attestation_commitment,
     };
 
     let config = pcs_config();
@@ -325,7 +324,7 @@ pub fn prove_provenance_attestation(witness: &AttestationWitness) -> Result<(), 
     );
 
     let proof = prove(&[&component], channel, commitment_scheme)
-        .map_err(|e| format!("Issuance proof generation failed: {e:?}"))?;
+        .map_err(|e| format!("Provenance attestation proof generation failed: {e:?}"))?;
 
     // Verify inline
     let channel = &mut ProverChannel::default();
@@ -338,7 +337,7 @@ pub fn prove_provenance_attestation(witness: &AttestationWitness) -> Result<(), 
     commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
 
     verify(&[&component], channel, commitment_scheme, proof)
-        .map_err(|e| format!("Issuance verification failed: {e:?}"))
+        .map_err(|e| format!("Provenance attestation verification failed: {e:?}"))
 }
 
 fn gen_issuer_merkle_trace(leaf: HashOut, path: &[([u32; 4], u32); MERKLE_DEPTH]) -> Vec<M31> {
@@ -390,7 +389,7 @@ mod tests {
         let issuer_key = M31::from(42u32);
         let issuer_id = poseidon2::derive_issuer_id(issuer_key);
         let subject = poseidon2::derive_owner(M31::from(12345u32));
-        let cm = poseidon2::credential_commitment(
+        let cm = poseidon2::attestation_commitment(
             issuer_id,
             subject,
             M31::from(2000u32),
@@ -404,7 +403,7 @@ mod tests {
 
         let witness = AttestationWitness {
             issuer_root: poseidon2::hashout_to_u32_array(issuer_root),
-            credential_commitment: poseidon2::hashout_to_u32_array(cm),
+            attestation_commitment: poseidon2::hashout_to_u32_array(cm),
             issuer_key: 42,
             subject: poseidon2::hashout_to_u32_array(subject),
             expiry: 2000,
@@ -412,7 +411,7 @@ mod tests {
             issuer_path: path_to_witness(&path_vec),
         };
 
-        prove_provenance_attestation(&witness).expect("Issuance should succeed");
+        prove_provenance_attestation(&witness).expect("Attestation should succeed");
     }
 
     #[test]
@@ -420,7 +419,7 @@ mod tests {
         let issuer_key = M31::from(42u32);
         let issuer_id = poseidon2::derive_issuer_id(issuer_key);
         let subject = poseidon2::derive_owner(M31::from(12345u32));
-        let cm = poseidon2::credential_commitment(
+        let cm = poseidon2::attestation_commitment(
             issuer_id,
             subject,
             M31::from(2000u32),
@@ -434,7 +433,7 @@ mod tests {
 
         let witness = AttestationWitness {
             issuer_root: poseidon2::hashout_to_u32_array(bad_root),
-            credential_commitment: poseidon2::hashout_to_u32_array(cm),
+            attestation_commitment: poseidon2::hashout_to_u32_array(cm),
             issuer_key: 42,
             subject: poseidon2::hashout_to_u32_array(subject),
             expiry: 2000,

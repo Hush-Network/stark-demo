@@ -4,15 +4,26 @@
 
 **[Try it live at demo.hushnetwork.io](https://demo.hushnetwork.io)**
 
-This repository contains the STARK proving engine and browser demo behind the public HushPay proof demo. It proves the core payment, provenance attestation, and time-window audit circuits over Mersenne31 with no trusted setup. It does not prove a live network.
+This repository contains the STARK proving engine, WASM boundary, and browser demo behind the public HushPay proof artifact. It implements the current payment, provenance attestation, and time-window audit circuits over Mersenne31 with no trusted setup. It does not implement a live network.
 
 Built on [Stwo](https://github.com/starkware-libs/stwo) (FRI-based STARK prover, Mersenne31 field) with Poseidon2 as the in-circuit hash.
 
 ## Relationship to the browser demo
 
-The live demo opens directly into the intended HushPay wallet experience: the sender sees amount, fee route, and total debit up front while the receiver gets the full payment amount.
+The `web/` directory is a browser demo that calls the proving engine through `src/wasm.rs`.
 
-This repository provides the proof engine underneath that experience: payment validity, provenance and non-revocation checks, audit key generation, and receipt verification. Wallet funding, boundary-issued provenance attestations, and live network submission remain represented in the demo.
+What is real in this repo:
+- payment proof generation and verification
+- provenance attestation proof generation
+- audit proof generation and verification
+- the quote / submit runtime used by the browser demo
+
+What remains demo scaffolding in this repo:
+- browser fixture balances, handles, and default recipients
+- single-leaf attestation setup in the `prove_demo_*` WASM helpers
+- in-memory wallet state and transaction history
+
+Wallet funding, live boundary-issued attestations, and network submission are represented in the demo but not implemented here as production integrations.
 
 ## Status boundary
 
@@ -40,26 +51,35 @@ This repository provides the proof engine underneath that experience: payment va
 - Validator incentives
 - Production wallet SDK
 
+## Demo fixtures and boundaries
+
+- `src/` contains the proof engine, circuit logic, hash primitives, and WASM exports.
+- `web/src/api/wasm-adapter.js` is the browser-side WASM boundary.
+- `web/src/config/demo-fixtures.js` contains explicit demo-only fixture values.
+- `web/src/state/demo-state.js` contains browser-only wallet state.
+
+If a reviewer wants the cleanest scope boundary, start with [`docs/current-scope.md`](docs/current-scope.md).
+
 ## What each circuit proves
 
 | Circuit | What it proves |
 |---------|----------------|
-| Payment | The sender owns the input notes, the note's provenance attestation is valid, the lineage is not in the revocation accumulator, and the amounts balance. Sender, receiver, and amount stay hidden. |
+| Payment | The sender owns the input notes, both input notes carry the same attestation root, the note paths resolve against the published note root, and the amounts balance. Sender, receiver, and amount stay hidden. |
 | Provenance Attestation | The note carries a valid attestation signed by a screened boundary actor (exchange, bridge, issuer, PSP, merchant) at entry. |
-| Time-Window Audit | This wallet transacted a specific total volume between two timestamps, surfaced to the user as an audit key, without revealing individual transactions. |
+| Time-Window Audit | This wallet transacted a specific total volume between two timestamps, surfaced to the user as an audit proof, without revealing individual transactions. |
 
 ## Circuits
 
 Three STARK circuits on Stwo over Mersenne31, with full Poseidon2 AIR constraints (S-box decomposed as x^2 -> x^4 -> x^5 for degree-2 constraint compatibility).
 
-**Payment circuit** (2-in-2-out private transfer with provenance + non-revocation check)
+**Payment circuit** (2-in-2-out private transfer with attestation-root continuity)
 - Note consumption and creation with nullifier/commitment pairs
 - Balance conservation enforced in-circuit
 - Nullifier inequality check (prevents double-spend)
 - Amount range checks (four 15-bit limbs per amount, radix 2^15, with carry-propagation conservation)
-- Provenance attestation verification: boundary actor identity, attestation root, and Merkle inclusion checked inside the proof
-- Non-revocation check: lineage marker proven absent from the revocation accumulator
-- Three depth-20 Merkle path verifications per transaction (2 note paths + 1 attestation path)
+- Provenance continuity: both consumed notes must carry the same attestation root and both created notes inherit it
+- Two depth-20 Merkle path verifications per transaction (note paths only)
+- Published accumulator root and epoch are bound into the proof transcript, but v1 does not yet enforce in-circuit non-revocation
 - ~44,400 trace columns
 
 **Provenance attestation circuit**
@@ -77,9 +97,9 @@ Three STARK circuits on Stwo over Mersenne31, with full Poseidon2 AIR constraint
 
 ## What the payment circuit proves
 
-Owner derivation, input/output note commitments, Merkle inclusion (2 note paths + 1 attestation path), nullifier derivation and uniqueness, balance conservation, provenance attestation validity (commitment + Merkle inclusion in the boundary actor set), and non-revocation (lineage marker absent from the revocation accumulator).
+Owner derivation, input/output note commitments, note-path inclusion for both consumed notes, nullifier derivation and uniqueness, balance conservation, and provenance continuity via shared attestation root inheritance.
 
-Public outputs bound via Fiat-Shamir: nullifiers, output commitments, lineage marker. Everything a validator would need to update ledger state and check the revocation accumulator.
+Public outputs bound via Fiat-Shamir: note root, accumulator root, epoch, binding data, nullifiers, and output commitments. The accumulator root is bound to the proof state, but it is not yet consumed by an in-circuit non-revocation check in the payment path.
 
 ## Performance
 
@@ -129,7 +149,6 @@ Fixed-width amount encoding means payment size does not change the circuit shape
 - Valid proof generation and verification for all three circuits
 - Balance conservation rejection (mismatched inputs/outputs)
 - Nullifier reuse rejection (double-spend prevention)
-- Revoked-lineage rejection (lineage marker present in revocation accumulator)
 - Unauthorized boundary-actor rejection
 - Invalid time window rejection
 - Mismatched audit total rejection
@@ -141,7 +160,7 @@ Fixed-width amount encoding means payment size does not change the circuit shape
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
 | Proving system | STARK (FRI) | Transparent, no trusted setup, post-quantum |
-| Prover | Stwo | Fastest production STARK prover, Rust, open source |
+| Prover | Stwo | Open-source Rust STARK prover with fast Mersenne31 support |
 | Field | Mersenne31 (M31) | Native to Stwo, fast field arithmetic |
 | In-circuit hash | Poseidon2 (width-16, Plonky3 constants) | STARK-optimized, efficient over M31 |
 | Commitment backend | Poseidon252 (native) / Blake2s (WASM) | Native build stays algebraic; WASM uses a compatible fallback |
@@ -150,7 +169,7 @@ Fixed-width amount encoding means payment size does not change the circuit shape
 
 ```
 src/
-  circuit.rs                Payment circuit (2-in-2-out, with provenance + non-revocation check)
+  circuit.rs                Payment circuit (2-in-2-out, with attestation-root continuity)
   provenance_attestation.rs Provenance attestation circuit
   time_window.rs            Time-window audit circuit
   poseidon2.rs              Poseidon2 hash (M31, width-16, domain-separated)

@@ -1,4 +1,5 @@
 import init, { verify_serialized_proof, verify_audit_proof, recompute_tx_binding_hash_json } from '../pkg/hush_demo_stark.js';
+import { esc, fmtHash4, hexToU32Array } from './lib/formatters.js';
 
 const input = document.getElementById('receipt-input');
 const btnVerify = document.getElementById('btn-verify');
@@ -30,40 +31,7 @@ if (stored) {
   tryVerify();
 }
 
-function esc(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 const ASSET_NAMES = { 1: 'USDC', 2: 'USDT', 3: 'HUSH' };
-
-// Format a [u32; 4] array as a 0x-prefixed 32-char hex string (4 x 8 hex digits).
-function fmtHash4(arr) {
-  if (!Array.isArray(arr) || arr.length !== 4) return '0x' + String(arr);
-  return '0x' + arr.map(v => (v >>> 0).toString(16).padStart(8, '0')).join('');
-}
-
-/**
- * Parse a 32-char hex string (128-bit hash) into a Uint32Array of 4 u32 values.
- * Handles optional "0x" prefix. Returns a zero-filled array for missing or
- * malformed input so verification can still proceed (and fail cleanly in WASM).
- */
-function hexToU32Array(hex) {
-  if (hex == null) return new Uint32Array(4);
-  const h = typeof hex === 'string' ? hex.replace(/^0x/i, '') : '';
-  if (h.length !== 32) return new Uint32Array(4);
-  return new Uint32Array([
-    parseInt(h.slice(0, 8), 16),
-    parseInt(h.slice(8, 16), 16),
-    parseInt(h.slice(16, 24), 16),
-    parseInt(h.slice(24, 32), 16),
-  ]);
-}
 
 function fmtBoundAmount(protocolUnits, scale) {
   if (!scale || scale <= 0) return esc(String(protocolUnits)) + ' protocol units';
@@ -81,7 +49,7 @@ async function verify() {
     return;
   }
 
-  // Route: audit key or payment receipt?
+  // Route: audit proof or payment receipt?
   if ((receipt.type === 'hush-audit-key' || receipt.type === 'hush-audit-proof') && receipt.proof && receipt.proof.proof_bytes) {
     return verifyAuditProof(receipt);
   }
@@ -254,7 +222,10 @@ async function verify() {
   html += row('null_1', esc(receipt.proof.null_1));
   html += row('out_cm_0', esc(receipt.proof.out_cm_0));
   html += row('out_cm_1', esc(receipt.proof.out_cm_1));
-  html += row('cred_null', esc(receipt.proof.cred_null));
+  html += row(
+    'attestation_nullifier',
+    esc(receipt.proof.attestation_nullifier || receipt.proof.cred_null || 'not exposed'),
+  );
 
   // --- Section: Performance ---
   html += '<div class="result-section">Performance</div>';
@@ -281,8 +252,8 @@ function showError(msg) {
 
 async function verifyAuditProof(receipt) {
   const p = receipt.proof;
-  if (!p || !p.proof_bytes || !p.cred_root || !p.cred_null) {
-    showError('Audit key is missing required fields (proof_bytes, cred_root, cred_null).');
+  if (!p || !p.proof_bytes || !p.attestation_root || !p.attestation_nullifier) {
+    showError('Audit proof is missing required fields (proof_bytes, attestation_root, attestation_nullifier).');
     return;
   }
 
@@ -295,15 +266,15 @@ async function verifyAuditProof(receipt) {
   let error = null;
 
   try {
-    const credRoot = hexToU32Array(p.cred_root);
-    const credNull = hexToU32Array(p.cred_null);
+    const attestationRoot = hexToU32Array(p.attestation_root);
+    const attestationNullifier = hexToU32Array(p.attestation_nullifier);
     const result = verify_audit_proof(
       p.proof_bytes,
       p.window_start,
       p.window_end,
       p.claimed_total,
-      credRoot,
-      credNull,
+      attestationRoot,
+      attestationNullifier,
       p.epoch || 0,
       p.log_num_rows || 4,
     );
@@ -318,10 +289,10 @@ async function verifyAuditProof(receipt) {
 
   if (verified) {
     banner.className = 'result-banner valid';
-    banner.textContent = '\u2713 Audit key verified. STARK proof is valid.';
+    banner.textContent = '\u2713 Audit proof verified. STARK proof is valid.';
   } else {
     banner.className = 'result-banner invalid';
-    banner.textContent = '\u2717 Audit key verification failed. ' + (error || 'Unknown error.');
+    banner.textContent = '\u2717 Audit proof verification failed. ' + (error || 'Unknown error.');
   }
 
   const scale = receipt.amt_scale || 0;
@@ -335,19 +306,23 @@ async function verifyAuditProof(receipt) {
   }
 
   html += '<div class="result-section">Proven Statement (cryptographically verified)</div>';
-  html += row('Proof type', 'Audit key');
-  html += row('Window', `${esc(receipt.window?.start_date || '')} to ${esc(receipt.window?.end_date || '')}`);
+  html += row('Proof type', 'Audit proof');
+  html += row('Window start', esc(String(p.window_start ?? '')));
+  html += row('Window end', esc(String(p.window_end ?? '')));
   if (p.claimed_total != null) {
     html += row('Total volume', fmtBoundAmount(p.claimed_total, scale));
   }
+
+  html += '<div class="result-section">Disclosed Metadata (not cryptographically verified)</div>';
+  html += row('Date range', `${esc(receipt.window?.start_date || '')} to ${esc(receipt.window?.end_date || '')}`);
   html += row('Transaction count', esc(String(receipt.tx_count || '?')));
   html += row('Asset', esc(receipt.asset || ''));
 
   html += '<div class="result-section">Proof Metadata</div>';
   html += row('Prove time', esc(String(receipt.prove_ms || '?')) + 'ms');
   html += row('Verify time', esc(String(receipt.verify_ms || '?')) + 'ms');
-  html += row('Cred root', esc(p.cred_root));
-  html += row('Cred null', esc(p.cred_null));
+  html += row('Attestation root', esc(p.attestation_root));
+  html += row('Attestation nullifier', esc(p.attestation_nullifier));
   html += row('Epoch', esc(String(p.epoch || '')));
 
   if (receipt.disclosed) {

@@ -1,31 +1,16 @@
 //! WASM bindings for browser proving.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use wasm_bindgen::prelude::*;
+
+use crate::wasm_support::{
+    base64_decode, base64_encode, json_error, json_result, validate_f64_amount,
+};
 
 #[wasm_bindgen(start)]
 pub fn wasm_init() {
     #[cfg(feature = "debug_panic")]
     console_error_panic_hook::set_once();
-}
-
-/// Validate an f64 value from JavaScript before casting to u64.
-/// Rejects NaN, infinity, negative values, non-integers, and values
-/// above Number.MAX_SAFE_INTEGER (2^53 - 1) where f64 loses precision.
-fn validate_f64_amount(v: f64, name: &str) -> Result<u64, String> {
-    if !v.is_finite() {
-        return Err(format!("{name} is not finite"));
-    }
-    if v < 0.0 {
-        return Err(format!("{name} is negative"));
-    }
-    if v != v.floor() {
-        return Err(format!("{name} is not an integer"));
-    }
-    if v > 9_007_199_254_740_991.0 {
-        return Err(format!("{name} exceeds safe integer range"));
-    }
-    Ok(v as u64)
 }
 
 use crate::{
@@ -147,17 +132,6 @@ impl ProofOutput {
     }
 }
 
-fn json_result<T: Serialize>(result: Result<T, String>) -> String {
-    match result {
-        Ok(data) => serde_json::json!({ "ok": true, "data": data }).to_string(),
-        Err(error) => serde_json::json!({ "ok": false, "error": error }).to_string(),
-    }
-}
-
-fn json_error(msg: &str) -> String {
-    serde_json::json!({ "ok": false, "error": msg }).to_string()
-}
-
 /// Binding preimage for tx_binding_hash recomputation.
 /// Amounts are u64 (parsed from JSON numbers by serde).
 #[derive(Deserialize)]
@@ -231,7 +205,7 @@ pub fn dual_fee_submit_demo_payment_json(
     recipient_owner: u32,
     payment_balance: f64,
     hush_balance: f64,
-    credential_expiry: u32,
+    attestation_expiry: u32,
 ) -> String {
     let amount = match validate_f64_amount(amount, "amount") {
         Ok(v) => v,
@@ -253,41 +227,8 @@ pub fn dual_fee_submit_demo_payment_json(
         recipient_owner,
         payment_balance,
         hush_balance,
-        credential_expiry: (credential_expiry != 0).then_some(credential_expiry),
+        attestation_expiry: (attestation_expiry != 0).then_some(attestation_expiry),
     }))
-}
-
-fn use_base64_encode(s: &str) -> String {
-    use std::fmt::Write;
-    let bytes = s.as_bytes();
-    let mut out = String::with_capacity((bytes.len() * 4).div_ceil(3));
-    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut i = 0;
-    while i + 2 < bytes.len() {
-        let b0 = bytes[i] as usize;
-        let b1 = bytes[i + 1] as usize;
-        let b2 = bytes[i + 2] as usize;
-        let _ = out.write_char(TABLE[b0 >> 2] as char);
-        let _ = out.write_char(TABLE[((b0 & 3) << 4) | (b1 >> 4)] as char);
-        let _ = out.write_char(TABLE[((b1 & 0xf) << 2) | (b2 >> 6)] as char);
-        let _ = out.write_char(TABLE[b2 & 0x3f] as char);
-        i += 3;
-    }
-    let rem = bytes.len() - i;
-    if rem == 1 {
-        let b0 = bytes[i] as usize;
-        let _ = out.write_char(TABLE[b0 >> 2] as char);
-        let _ = out.write_char(TABLE[(b0 & 3) << 4] as char);
-        out.push_str("==");
-    } else if rem == 2 {
-        let b0 = bytes[i] as usize;
-        let b1 = bytes[i + 1] as usize;
-        let _ = out.write_char(TABLE[b0 >> 2] as char);
-        let _ = out.write_char(TABLE[((b0 & 3) << 4) | (b1 >> 4)] as char);
-        let _ = out.write_char(TABLE[(b1 & 0xf) << 2] as char);
-        out.push('=');
-    }
-    out
 }
 
 /// Result type for audit proofs, with serialized proof bytes for independent verification.
@@ -302,8 +243,8 @@ pub struct AuditOutput {
     window_start: u32,
     window_end: u32,
     claimed_total: f64,
-    cred_root: [u32; 4],
-    cred_null: [u32; 4],
+    attestation_root: [u32; 4],
+    attestation_nullifier: [u32; 4],
     epoch: u32,
     log_num_rows: u32,
 }
@@ -343,17 +284,23 @@ impl AuditOutput {
         self.claimed_total
     }
     #[wasm_bindgen(getter)]
-    pub fn cred_null(&self) -> String {
+    pub fn attestation_nullifier(&self) -> String {
         format!(
             "{:08x}{:08x}{:08x}{:08x}",
-            self.cred_null[0], self.cred_null[1], self.cred_null[2], self.cred_null[3]
+            self.attestation_nullifier[0],
+            self.attestation_nullifier[1],
+            self.attestation_nullifier[2],
+            self.attestation_nullifier[3]
         )
     }
     #[wasm_bindgen(getter)]
-    pub fn cred_root(&self) -> String {
+    pub fn attestation_root(&self) -> String {
         format!(
             "{:08x}{:08x}{:08x}{:08x}",
-            self.cred_root[0], self.cred_root[1], self.cred_root[2], self.cred_root[3]
+            self.attestation_root[0],
+            self.attestation_root[1],
+            self.attestation_root[2],
+            self.attestation_root[3]
         )
     }
     #[wasm_bindgen(getter)]
@@ -367,14 +314,14 @@ impl AuditOutput {
 }
 
 #[wasm_bindgen]
-pub struct CredentialIssuanceOutput {
+pub struct ProvenanceAttestationOutput {
     success: bool,
     message: String,
     prove_time_ms: f64,
 }
 
 #[wasm_bindgen]
-impl CredentialIssuanceOutput {
+impl ProvenanceAttestationOutput {
     #[wasm_bindgen(getter)]
     pub fn success(&self) -> bool {
         self.success
@@ -397,7 +344,7 @@ pub fn prove_demo_provenance_attestation(
     issuer_key: u32,
     expiry: u32,
     secret: u32,
-) -> CredentialIssuanceOutput {
+) -> ProvenanceAttestationOutput {
     use stwo::core::fields::m31::M31;
 
     use crate::{poseidon2, types::MERKLE_DEPTH};
@@ -406,12 +353,13 @@ pub fn prove_demo_provenance_attestation(
 
     let subject = poseidon2::hashout_to_u32_array(poseidon2::derive_owner(M31::from(sk)));
     let issuer_id = poseidon2::derive_issuer_id(M31::from(issuer_key));
-    let credential_commitment = poseidon2::hashout_to_u32_array(poseidon2::credential_commitment(
-        issuer_id,
-        poseidon2::derive_owner(M31::from(sk)),
-        M31::from(expiry),
-        M31::from(secret),
-    ));
+    let attestation_commitment =
+        poseidon2::hashout_to_u32_array(poseidon2::attestation_commitment(
+            issuer_id,
+            poseidon2::derive_owner(M31::from(sk)),
+            M31::from(expiry),
+            M31::from(secret),
+        ));
 
     let mut issuer_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
     issuer_tree.set_leaf(0, issuer_id);
@@ -424,7 +372,7 @@ pub fn prove_demo_provenance_attestation(
 
     let witness = provenance_attestation::AttestationWitness {
         issuer_root,
-        credential_commitment,
+        attestation_commitment,
         issuer_key,
         subject,
         expiry,
@@ -433,12 +381,12 @@ pub fn prove_demo_provenance_attestation(
     };
 
     match provenance_attestation::prove_provenance_attestation(&witness) {
-        Ok(()) => CredentialIssuanceOutput {
+        Ok(()) => ProvenanceAttestationOutput {
             success: true,
-            message: "Credential issuance proof verified".to_string(),
+            message: "Provenance attestation proof verified".to_string(),
             prove_time_ms: js_sys::Date::now() - prove_start,
         },
-        Err(error) => CredentialIssuanceOutput {
+        Err(error) => ProvenanceAttestationOutput {
             success: false,
             message: error,
             prove_time_ms: js_sys::Date::now() - prove_start,
@@ -456,8 +404,8 @@ fn audit_error(message: String) -> AuditOutput {
         window_start: 0,
         window_end: 0,
         claimed_total: 0.0,
-        cred_root: [0; 4],
-        cred_null: [0; 4],
+        attestation_root: [0; 4],
+        attestation_nullifier: [0; 4],
         epoch: 0,
         log_num_rows: 0,
     }
@@ -472,9 +420,9 @@ pub fn prove_time_window_audit(
     amounts: &[f64],
     timestamps: &[u32],
     sk: u32,
-    cred_issuer: u32,
-    cred_expiry: u32,
-    cred_secret: u32,
+    attestation_issuer: u32,
+    attestation_expiry: u32,
+    attestation_secret: u32,
 ) -> AuditOutput {
     use stwo::core::fields::m31::M31;
 
@@ -482,23 +430,23 @@ pub fn prove_time_window_audit(
 
     const MAX_TX: usize = 16;
 
-    // Build credential tree
+    // Build the demo attestation tree.
     let owner = poseidon2::derive_owner(M31::from(sk));
-    let issuer_id = poseidon2::derive_issuer_id(M31::from(cred_issuer));
-    let cred_cm = poseidon2::credential_commitment(
+    let issuer_id = poseidon2::derive_issuer_id(M31::from(attestation_issuer));
+    let attestation_commitment = poseidon2::attestation_commitment(
         issuer_id,
         owner,
-        M31::from(cred_expiry),
-        M31::from(cred_secret),
+        M31::from(attestation_expiry),
+        M31::from(attestation_secret),
     );
-    let mut cred_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
-    cred_tree.set_leaf(0, cred_cm);
-    let cred_root = poseidon2::hashout_to_u32_array(cred_tree.root());
+    let mut attestation_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
+    attestation_tree.set_leaf(0, attestation_commitment);
+    let attestation_root = poseidon2::hashout_to_u32_array(attestation_tree.root());
 
-    let cred_path_pairs = cred_tree.path(0);
-    let mut cred_path = [([0u32; 4], 0u32); MERKLE_DEPTH];
-    for (i, (sib, dir)) in cred_path_pairs.iter().enumerate() {
-        cred_path[i] = (poseidon2::hashout_to_u32_array(*sib), *dir);
+    let attestation_path_pairs = attestation_tree.path(0);
+    let mut attestation_path = [([0u32; 4], 0u32); MERKLE_DEPTH];
+    for (i, (sib, dir)) in attestation_path_pairs.iter().enumerate() {
+        attestation_path[i] = (poseidon2::hashout_to_u32_array(*sib), *dir);
     }
 
     // Validate and convert f64 amounts to u64 (same validation as payment circuit)
@@ -523,16 +471,16 @@ pub fn prove_time_window_audit(
         window_start,
         window_end,
         claimed_total,
-        cred_root,
+        attestation_root,
         epoch: 1000,
         tx_amounts,
         tx_timestamps,
         tx_count,
         sk,
-        cred_issuer,
-        cred_expiry,
-        cred_secret,
-        cred_path,
+        attestation_issuer,
+        attestation_expiry,
+        attestation_secret,
+        attestation_path,
     };
 
     let prove_start = js_sys::Date::now();
@@ -544,7 +492,7 @@ pub fn prove_time_window_audit(
 
     // Serialize proof for independent verification
     let serialized = serde_json::to_string(&proof_result.proof).unwrap_or_else(|_| String::new());
-    let proof_bytes = use_base64_encode(&serialized);
+    let proof_bytes = base64_encode(&serialized);
 
     let pd = &proof_result.public_data;
     let log_num_rows = proof_result.log_num_rows;
@@ -561,8 +509,8 @@ pub fn prove_time_window_audit(
             window_start: pd.window_start,
             window_end: pd.window_end,
             claimed_total: pd.claimed_total as f64,
-            cred_root: pd.cred_root,
-            cred_null: pd.cred_null,
+            attestation_root: pd.attestation_root,
+            attestation_nullifier: pd.attestation_nullifier,
             epoch: pd.epoch,
             log_num_rows,
         },
@@ -575,8 +523,8 @@ pub fn prove_time_window_audit(
             window_start: 0,
             window_end: 0,
             claimed_total: 0.0,
-            cred_root: [0; 4],
-            cred_null: [0; 4],
+            attestation_root: [0; 4],
+            attestation_nullifier: [0; 4],
             epoch: 0,
             log_num_rows: 0,
         },
@@ -591,8 +539,8 @@ pub fn verify_audit_proof(
     window_start: u32,
     window_end: u32,
     claimed_total: f64,
-    cred_root: &[u32],
-    cred_null: &[u32],
+    attestation_root: &[u32],
+    attestation_nullifier: &[u32],
     epoch: u32,
     log_num_rows: u32,
 ) -> String {
@@ -619,11 +567,11 @@ pub fn verify_audit_proof(
         }
         Ok([s[0], s[1], s[2], s[3]])
     }
-    let cred_root = match to_arr(cred_root, "cred_root") {
+    let attestation_root = match to_arr(attestation_root, "attestation_root") {
         Ok(v) => v,
         Err(e) => return e,
     };
-    let cred_null = match to_arr(cred_null, "cred_null") {
+    let attestation_nullifier = match to_arr(attestation_nullifier, "attestation_nullifier") {
         Ok(v) => v,
         Err(e) => return e,
     };
@@ -647,8 +595,8 @@ pub fn verify_audit_proof(
         window_start,
         window_end,
         claimed_total: claimed_total_u64,
-        cred_root,
-        cred_null,
+        attestation_root,
+        attestation_nullifier,
         epoch,
     };
 
@@ -789,54 +737,4 @@ pub fn verify_serialized_proof(
         Ok(()) => "ok".to_string(),
         Err(e) => format!("verification failed: {e}"),
     }
-}
-
-fn base64_decode(s: &str) -> Result<Vec<u8>, &'static str> {
-    let s = s.as_bytes();
-    let mut out = Vec::with_capacity(s.len() * 3 / 4);
-    const TABLE: [u8; 256] = {
-        let mut t = [255u8; 256];
-        let mut i = 0u8;
-        while i < 26 {
-            t[(b'A' + i) as usize] = i;
-            t[(b'a' + i) as usize] = 26 + i;
-            i += 1;
-        }
-        let mut i = 0u8;
-        while i < 10 {
-            t[(b'0' + i) as usize] = 52 + i;
-            i += 1;
-        }
-        t[b'+' as usize] = 62;
-        t[b'/' as usize] = 63;
-        t[b'=' as usize] = 0;
-        t
-    };
-    let mut i = 0;
-    while i + 3 < s.len() {
-        let (a, b, c, d) = (
-            TABLE[s[i] as usize],
-            TABLE[s[i + 1] as usize],
-            TABLE[s[i + 2] as usize],
-            TABLE[s[i + 3] as usize],
-        );
-        if a == 255 || b == 255 {
-            return Err("invalid base64");
-        }
-        out.push((a << 2) | (b >> 4));
-        if s[i + 2] != b'=' {
-            if c == 255 {
-                return Err("invalid base64");
-            }
-            out.push((b << 4) | (c >> 2));
-        }
-        if s[i + 3] != b'=' {
-            if d == 255 {
-                return Err("invalid base64");
-            }
-            out.push((c << 6) | d);
-        }
-        i += 4;
-    }
-    Ok(out)
 }

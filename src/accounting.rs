@@ -811,12 +811,12 @@ mod tests {
 
     #[test]
     fn test_canonical_transaction_kind_mapping_enforced() {
-        let action = ProtocolActionTx::build(TxKind::CredentialStateAction, 66, 4)
-            .expect("credential action should build");
-        validate_protocol_action_tx(&action).expect("credential action should accept HUSH");
+        let action = ProtocolActionTx::build(TxKind::ProvenanceStateAction, 66, 4)
+            .expect("provenance action should build");
+        validate_protocol_action_tx(&action).expect("provenance action should accept HUSH");
 
         assert!(validate_tx_kind_fee_asset_policy(
-            TxKind::CredentialStateAction.as_u32(),
+            TxKind::ProvenanceStateAction.as_u32(),
             None,
             AssetId::Usdt as u32,
         )

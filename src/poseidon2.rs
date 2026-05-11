@@ -356,8 +356,13 @@ pub fn note_commitment_u64(
     )
 }
 
-/// Credential commitment. Preimage: (issuer[0..4], owner[0..4], expiry, secret) = 10 inputs → 2 sponge blocks.
-pub fn credential_commitment(issuer: HashOut, owner: HashOut, expiry: M31, secret: M31) -> HashOut {
+/// Attestation commitment. Preimage: (issuer[0..4], owner[0..4], expiry, secret) = 10 inputs → 2 sponge blocks.
+pub fn attestation_commitment(
+    issuer: HashOut,
+    owner: HashOut,
+    expiry: M31,
+    secret: M31,
+) -> HashOut {
     sponge_hash(
         &[
             issuer[0], issuer[1], issuer[2], issuer[3], owner[0], owner[1], owner[2], owner[3],
@@ -372,9 +377,19 @@ pub fn nullifier(sk: M31, commitment: HashOut) -> HashOut {
     hash_block(&[sk, commitment[0], commitment[1], commitment[2], commitment[3]], DOMAIN_NULLIFIER)
 }
 
-/// Credential nullifier. Preimage: (secret, cred_cm[0..4], epoch) = 6 inputs → single block.
-pub fn credential_nullifier(secret: M31, cred_cm: HashOut, epoch: M31) -> HashOut {
-    hash_block(&[secret, cred_cm[0], cred_cm[1], cred_cm[2], cred_cm[3], epoch], DOMAIN_CRED_NULL)
+/// Attestation nullifier. Preimage: (secret, attestation_cm[0..4], epoch) = 6 inputs → single block.
+pub fn attestation_nullifier(secret: M31, attestation_cm: HashOut, epoch: M31) -> HashOut {
+    hash_block(
+        &[
+            secret,
+            attestation_cm[0],
+            attestation_cm[1],
+            attestation_cm[2],
+            attestation_cm[3],
+            epoch,
+        ],
+        DOMAIN_CRED_NULL,
+    )
 }
 
 pub fn derive_owner(sk: M31) -> HashOut {
@@ -813,20 +828,26 @@ mod tests {
     }
 
     #[test]
-    fn test_credential_commitment_binding() {
+    fn test_attestation_commitment_binding() {
         let issuer = derive_issuer_id(M31::from(10u32));
         let issuer2 = derive_issuer_id(M31::from(11u32));
         let owner = derive_owner(M31::from(20u32));
         let owner2 = derive_owner(M31::from(21u32));
-        let base = credential_commitment(issuer, owner, M31::from(30u32), M31::from(40u32));
+        let base = attestation_commitment(issuer, owner, M31::from(30u32), M31::from(40u32));
         // Change issuer
-        assert_ne!(base, credential_commitment(issuer2, owner, M31::from(30u32), M31::from(40u32)));
+        assert_ne!(
+            base,
+            attestation_commitment(issuer2, owner, M31::from(30u32), M31::from(40u32))
+        );
         // Change owner
-        assert_ne!(base, credential_commitment(issuer, owner2, M31::from(30u32), M31::from(40u32)));
+        assert_ne!(
+            base,
+            attestation_commitment(issuer, owner2, M31::from(30u32), M31::from(40u32))
+        );
         // Change expiry
-        assert_ne!(base, credential_commitment(issuer, owner, M31::from(31u32), M31::from(40u32)));
+        assert_ne!(base, attestation_commitment(issuer, owner, M31::from(31u32), M31::from(40u32)));
         // Change secret
-        assert_ne!(base, credential_commitment(issuer, owner, M31::from(30u32), M31::from(41u32)));
+        assert_ne!(base, attestation_commitment(issuer, owner, M31::from(30u32), M31::from(41u32)));
     }
 
     #[test]
@@ -954,15 +975,15 @@ mod tests {
     }
 
     #[test]
-    fn test_credential_nullifier_tied_to_commitment() {
+    fn test_attestation_nullifier_tied_to_commitment() {
         let secret = M31::from(777u32);
         let epoch = M31::from(1000u32);
         let cm1 = test_hashout(111);
         let cm2 = test_hashout(222);
-        // Different credentials with same secret and epoch produce different nullifiers
-        let null1 = credential_nullifier(secret, cm1, epoch);
-        let null2 = credential_nullifier(secret, cm2, epoch);
-        assert_ne!(null1, null2, "Credential nullifier must be tied to commitment");
+        // Different attestations with the same secret and epoch produce different nullifiers.
+        let null1 = attestation_nullifier(secret, cm1, epoch);
+        let null2 = attestation_nullifier(secret, cm2, epoch);
+        assert_ne!(null1, null2, "Attestation nullifier must be tied to commitment");
     }
 
     #[test]

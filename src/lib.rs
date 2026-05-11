@@ -11,6 +11,7 @@ pub mod provenance_attestation;
 pub mod time_window;
 pub mod types;
 pub mod wasm;
+pub(crate) mod wasm_support;
 
 pub(crate) mod poseidon2_air;
 pub(crate) mod prover_common;

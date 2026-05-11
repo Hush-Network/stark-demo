@@ -22,49 +22,49 @@ export class AuditOutput {
         wasm.__wbg_auditoutput_free(ptr, 0);
     }
     /**
+     * @returns {string}
+     */
+    get attestation_nullifier() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.auditoutput_attestation_nullifier(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    get attestation_root() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.auditoutput_attestation_root(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * @returns {number}
      */
     get claimed_total() {
         const ret = wasm.auditoutput_claimed_total(this.__wbg_ptr);
         return ret;
-    }
-    /**
-     * @returns {string}
-     */
-    get cred_null() {
-        let deferred1_0;
-        let deferred1_1;
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.auditoutput_cred_null(retptr, this.__wbg_ptr);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            deferred1_0 = r0;
-            deferred1_1 = r1;
-            return getStringFromWasm0(r0, r1);
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
-        }
-    }
-    /**
-     * @returns {string}
-     */
-    get cred_root() {
-        let deferred1_0;
-        let deferred1_1;
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.auditoutput_cred_root(retptr, this.__wbg_ptr);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            deferred1_0 = r0;
-            deferred1_1 = r1;
-            return getStringFromWasm0(r0, r1);
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
-        }
     }
     /**
      * @returns {number}
@@ -155,60 +155,6 @@ export class AuditOutput {
     }
 }
 if (Symbol.dispose) AuditOutput.prototype[Symbol.dispose] = AuditOutput.prototype.free;
-
-export class CredentialIssuanceOutput {
-    static __wrap(ptr) {
-        ptr = ptr >>> 0;
-        const obj = Object.create(CredentialIssuanceOutput.prototype);
-        obj.__wbg_ptr = ptr;
-        CredentialIssuanceOutputFinalization.register(obj, obj.__wbg_ptr, obj);
-        return obj;
-    }
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        CredentialIssuanceOutputFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_credentialissuanceoutput_free(ptr, 0);
-    }
-    /**
-     * @returns {string}
-     */
-    get message() {
-        let deferred1_0;
-        let deferred1_1;
-        try {
-            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.credentialissuanceoutput_message(retptr, this.__wbg_ptr);
-            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-            deferred1_0 = r0;
-            deferred1_1 = r1;
-            return getStringFromWasm0(r0, r1);
-        } finally {
-            wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
-        }
-    }
-    /**
-     * @returns {number}
-     */
-    get prove_time_ms() {
-        const ret = wasm.credentialissuanceoutput_prove_time_ms(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {boolean}
-     */
-    get success() {
-        const ret = wasm.credentialissuanceoutput_success(this.__wbg_ptr);
-        return ret !== 0;
-    }
-}
-if (Symbol.dispose) CredentialIssuanceOutput.prototype[Symbol.dispose] = CredentialIssuanceOutput.prototype.free;
 
 export class ProofOutput {
     __destroy_into_raw() {
@@ -411,6 +357,60 @@ export class ProofOutput {
 }
 if (Symbol.dispose) ProofOutput.prototype[Symbol.dispose] = ProofOutput.prototype.free;
 
+export class ProvenanceAttestationOutput {
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(ProvenanceAttestationOutput.prototype);
+        obj.__wbg_ptr = ptr;
+        ProvenanceAttestationOutputFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        ProvenanceAttestationOutputFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_provenanceattestationoutput_free(ptr, 0);
+    }
+    /**
+     * @returns {string}
+     */
+    get message() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.provenanceattestationoutput_message(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    get prove_time_ms() {
+        const ret = wasm.provenanceattestationoutput_prove_time_ms(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {boolean}
+     */
+    get success() {
+        const ret = wasm.provenanceattestationoutput_success(this.__wbg_ptr);
+        return ret !== 0;
+    }
+}
+if (Symbol.dispose) ProvenanceAttestationOutput.prototype[Symbol.dispose] = ProvenanceAttestationOutput.prototype.free;
+
 /**
  * @param {number} payment_asset
  * @param {number} fee_asset
@@ -443,15 +443,15 @@ export function dual_fee_quote_payment_with_schedule_json(payment_asset, fee_ass
  * @param {number} recipient_owner
  * @param {number} payment_balance
  * @param {number} hush_balance
- * @param {number} credential_expiry
+ * @param {number} attestation_expiry
  * @returns {string}
  */
-export function dual_fee_submit_demo_payment_json(payment_asset, fee_asset, amount, fee_schedule_version, recipient_owner, payment_balance, hush_balance, credential_expiry) {
+export function dual_fee_submit_demo_payment_json(payment_asset, fee_asset, amount, fee_schedule_version, recipient_owner, payment_balance, hush_balance, attestation_expiry) {
     let deferred1_0;
     let deferred1_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.dual_fee_submit_demo_payment_json(retptr, payment_asset, fee_asset, amount, fee_schedule_version, recipient_owner, payment_balance, hush_balance, credential_expiry);
+        wasm.dual_fee_submit_demo_payment_json(retptr, payment_asset, fee_asset, amount, fee_schedule_version, recipient_owner, payment_balance, hush_balance, attestation_expiry);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         deferred1_0 = r0;
@@ -468,11 +468,11 @@ export function dual_fee_submit_demo_payment_json(payment_asset, fee_asset, amou
  * @param {number} issuer_key
  * @param {number} expiry
  * @param {number} secret
- * @returns {CredentialIssuanceOutput}
+ * @returns {ProvenanceAttestationOutput}
  */
 export function prove_demo_provenance_attestation(sk, issuer_key, expiry, secret) {
     const ret = wasm.prove_demo_provenance_attestation(sk, issuer_key, expiry, secret);
-    return CredentialIssuanceOutput.__wrap(ret);
+    return ProvenanceAttestationOutput.__wrap(ret);
 }
 
 /**
@@ -483,17 +483,17 @@ export function prove_demo_provenance_attestation(sk, issuer_key, expiry, secret
  * @param {Float64Array} amounts
  * @param {Uint32Array} timestamps
  * @param {number} sk
- * @param {number} cred_issuer
- * @param {number} cred_expiry
- * @param {number} cred_secret
+ * @param {number} attestation_issuer
+ * @param {number} attestation_expiry
+ * @param {number} attestation_secret
  * @returns {AuditOutput}
  */
-export function prove_time_window_audit(window_start, window_end, amounts, timestamps, sk, cred_issuer, cred_expiry, cred_secret) {
+export function prove_time_window_audit(window_start, window_end, amounts, timestamps, sk, attestation_issuer, attestation_expiry, attestation_secret) {
     const ptr0 = passArrayF64ToWasm0(amounts, wasm.__wbindgen_export2);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArray32ToWasm0(timestamps, wasm.__wbindgen_export2);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.prove_time_window_audit(window_start, window_end, ptr0, len0, ptr1, len1, sk, cred_issuer, cred_expiry, cred_secret);
+    const ret = wasm.prove_time_window_audit(window_start, window_end, ptr0, len0, ptr1, len1, sk, attestation_issuer, attestation_expiry, attestation_secret);
     return AuditOutput.__wrap(ret);
 }
 
@@ -531,22 +531,22 @@ export function recompute_tx_binding_hash_json(binding_json) {
  * @param {number} window_start
  * @param {number} window_end
  * @param {number} claimed_total
- * @param {Uint32Array} cred_root
- * @param {Uint32Array} cred_null
+ * @param {Uint32Array} attestation_root
+ * @param {Uint32Array} attestation_nullifier
  * @param {number} epoch
  * @param {number} log_num_rows
  * @returns {string}
  */
-export function verify_audit_proof(proof_b64, window_start, window_end, claimed_total, cred_root, cred_null, epoch, log_num_rows) {
+export function verify_audit_proof(proof_b64, window_start, window_end, claimed_total, attestation_root, attestation_nullifier, epoch, log_num_rows) {
     let deferred4_0;
     let deferred4_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         const ptr0 = passStringToWasm0(proof_b64, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray32ToWasm0(cred_root, wasm.__wbindgen_export2);
+        const ptr1 = passArray32ToWasm0(attestation_root, wasm.__wbindgen_export2);
         const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArray32ToWasm0(cred_null, wasm.__wbindgen_export2);
+        const ptr2 = passArray32ToWasm0(attestation_nullifier, wasm.__wbindgen_export2);
         const len2 = WASM_VECTOR_LEN;
         wasm.verify_audit_proof(retptr, ptr0, len0, window_start, window_end, claimed_total, ptr1, len1, ptr2, len2, epoch, log_num_rows);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -639,12 +639,12 @@ function __wbg_get_imports() {
 const AuditOutputFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_auditoutput_free(ptr >>> 0, 1));
-const CredentialIssuanceOutputFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_credentialissuanceoutput_free(ptr >>> 0, 1));
 const ProofOutputFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_proofoutput_free(ptr >>> 0, 1));
+const ProvenanceAttestationOutputFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_provenanceattestationoutput_free(ptr >>> 0, 1));
 
 let cachedDataViewMemory0 = null;
 function getDataViewMemory0() {

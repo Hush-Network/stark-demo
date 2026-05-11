@@ -8,9 +8,9 @@ export class AuditOutput {
     private constructor();
     free(): void;
     [Symbol.dispose](): void;
+    readonly attestation_nullifier: string;
+    readonly attestation_root: string;
     readonly claimed_total: number;
-    readonly cred_null: string;
-    readonly cred_root: string;
     readonly epoch: number;
     readonly log_num_rows: number;
     readonly message: string;
@@ -20,15 +20,6 @@ export class AuditOutput {
     readonly verify_time_ms: number;
     readonly window_end: number;
     readonly window_start: number;
-}
-
-export class CredentialIssuanceOutput {
-    private constructor();
-    free(): void;
-    [Symbol.dispose](): void;
-    readonly message: string;
-    readonly prove_time_ms: number;
-    readonly success: boolean;
 }
 
 export class ProofOutput {
@@ -50,17 +41,26 @@ export class ProofOutput {
     readonly verify_time_ms: number;
 }
 
+export class ProvenanceAttestationOutput {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    readonly message: string;
+    readonly prove_time_ms: number;
+    readonly success: boolean;
+}
+
 export function dual_fee_quote_payment_with_schedule_json(payment_asset: number, fee_asset: number, amount: number, fee_schedule_version: number): string;
 
-export function dual_fee_submit_demo_payment_json(payment_asset: number, fee_asset: number, amount: number, fee_schedule_version: number, recipient_owner: number, payment_balance: number, hush_balance: number, credential_expiry: number): string;
+export function dual_fee_submit_demo_payment_json(payment_asset: number, fee_asset: number, amount: number, fee_schedule_version: number, recipient_owner: number, payment_balance: number, hush_balance: number, attestation_expiry: number): string;
 
-export function prove_demo_provenance_attestation(sk: number, issuer_key: number, expiry: number, secret: number): CredentialIssuanceOutput;
+export function prove_demo_provenance_attestation(sk: number, issuer_key: number, expiry: number, secret: number): ProvenanceAttestationOutput;
 
 /**
  * Proves a time-window audit for the browser demo.
  * Amounts are passed as f64 (protocol units, same transport as payment circuit).
  */
-export function prove_time_window_audit(window_start: number, window_end: number, amounts: Float64Array, timestamps: Uint32Array, sk: number, cred_issuer: number, cred_expiry: number, cred_secret: number): AuditOutput;
+export function prove_time_window_audit(window_start: number, window_end: number, amounts: Float64Array, timestamps: Uint32Array, sk: number, attestation_issuer: number, attestation_expiry: number, attestation_secret: number): AuditOutput;
 
 /**
  * Recompute tx_binding_hash from a JSON-encoded binding preimage.
@@ -74,7 +74,7 @@ export function recompute_tx_binding_hash_json(binding_json: string): string;
  * Independently verify a serialized time-window audit proof.
  * Returns "ok" on success, error message on failure.
  */
-export function verify_audit_proof(proof_b64: string, window_start: number, window_end: number, claimed_total: number, cred_root: Uint32Array, cred_null: Uint32Array, epoch: number, log_num_rows: number): string;
+export function verify_audit_proof(proof_b64: string, window_start: number, window_end: number, claimed_total: number, attestation_root: Uint32Array, attestation_nullifier: Uint32Array, epoch: number, log_num_rows: number): string;
 
 /**
  * Verify a serialized STARK proof against its public outputs.
@@ -119,14 +119,14 @@ export interface InitOutput {
     readonly auditoutput_window_start: (a: number) => number;
     readonly auditoutput_window_end: (a: number) => number;
     readonly auditoutput_claimed_total: (a: number) => number;
-    readonly auditoutput_cred_null: (a: number, b: number) => void;
-    readonly auditoutput_cred_root: (a: number, b: number) => void;
+    readonly auditoutput_attestation_nullifier: (a: number, b: number) => void;
+    readonly auditoutput_attestation_root: (a: number, b: number) => void;
     readonly auditoutput_epoch: (a: number) => number;
     readonly auditoutput_log_num_rows: (a: number) => number;
-    readonly __wbg_credentialissuanceoutput_free: (a: number, b: number) => void;
-    readonly credentialissuanceoutput_success: (a: number) => number;
-    readonly credentialissuanceoutput_message: (a: number, b: number) => void;
-    readonly credentialissuanceoutput_prove_time_ms: (a: number) => number;
+    readonly __wbg_provenanceattestationoutput_free: (a: number, b: number) => void;
+    readonly provenanceattestationoutput_success: (a: number) => number;
+    readonly provenanceattestationoutput_message: (a: number, b: number) => void;
+    readonly provenanceattestationoutput_prove_time_ms: (a: number) => number;
     readonly prove_demo_provenance_attestation: (a: number, b: number, c: number, d: number) => number;
     readonly prove_time_window_audit: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
     readonly verify_audit_proof: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;

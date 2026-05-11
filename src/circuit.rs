@@ -1,4 +1,4 @@
-//! Payment circuit (2-in-2-out private transfer with credential check).
+//! Payment circuit for 2-in-2-out private stablecoin transfers.
 
 use num_traits::{One, Zero};
 use stwo::{
@@ -100,7 +100,7 @@ fn constrain_merkle_path<E: EvalAtRow>(eval: &mut E, leaf: [E::F; 4], pub_root: 
 }
 
 #[derive(Clone)]
-// TODO(prod): variable fan-in/fan-out, fee output, multi-asset type enforcement
+// Future expansion: variable fan-in/fan-out, fee output, multi-asset type enforcement.
 pub struct HushPaymentEval {
     pub log_size: u32,
 }
@@ -358,7 +358,7 @@ impl FrameworkEval for HushPaymentEval {
         let _ = pub_accumulator_root;
         let _ = epoch;
 
-        // Merkle inclusion: two note paths (no credential path in v1 canonical circuit)
+        // Merkle inclusion: two note paths (no attestation path in v1 canonical circuit)
         constrain_merkle_path(&mut eval, in_cm_0, pub_note_root.clone());
         constrain_merkle_path(&mut eval, in_cm_1, pub_note_root);
 
@@ -1034,7 +1034,7 @@ pub fn prove_payment(witness: &PaymentWitness) -> Result<ProofResult, String> {
     Ok(ProofResult { proof, component, public_data, log_num_rows })
 }
 
-// FIXME: proof.clone() on verify is wasteful, should take &StarkProof
+// Stwo verification currently consumes the proof value, so verification clones the proof result.
 pub fn verify_payment(result: &ProofResult) -> Result<(), String> {
     let config = pcs_config();
     let channel = &mut ProverChannel::default();
@@ -1051,7 +1051,8 @@ pub fn verify_payment(result: &ProofResult) -> Result<(), String> {
         .map_err(|e| format!("Verification failed: {e:?}"))
 }
 
-// TODO(marty): extract common trace gen into a macro, three circuits repeat this pattern
+// This trace-generation pattern is shared across circuits. Keep the layout explicit
+// here until a refactor can preserve reviewability without obscuring column order.
 
 pub struct BatchProofResult {
     pub proof: stwo::core::proof::StarkProof<ProverMerkleHasher>,

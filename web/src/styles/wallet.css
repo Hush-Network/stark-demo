@@ -447,8 +447,11 @@
   font-size: clamp(28px, 3vw, 40px);
   line-height: 1;
   color: var(--w-ink);
-  font-family: ui-serif, Georgia, serif;
-  font-variant-numeric: tabular-nums;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  display: inline-flex;
+  align-items: baseline;
 }
 
 .app-root .actions-row {
@@ -828,12 +831,6 @@
   padding: 0 6px;
 }
 .composer-overlay .composer-modal-body { padding: 18px 22px 24px; }
-
-/* ---------- Hide legacy app-frame chrome ---------- */
-/* The old index.html still has a top header inside #app. We hide it because
-   the wallet shell renders its own topbar via #topbar. */
-.app-root .app-frame > header.topbar:not(#topbar) { display: none; }
-.app-root .workspace { display: none; }
 
 /* ---------- Mobile menu button (hidden on desktop) ---------- */
 .app-root .menu-btn {

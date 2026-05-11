@@ -16,10 +16,11 @@ export function renderActivity(activity) {
       </div>
       ${activity.map((item) => {
         if (item.kind === 'audit') {
+          const volumeLabel = item.totalVolume != null ? `$${fmtMoney(item.totalVolume)}` : '--';
           return `
             <div class="ledger-row ledger-row-audit">
-              <span class="ledger-main ledger-counterparty">Audit key</span>
-              <span class="ledger-amount">${esc(item.copy.split('|')[1]?.trim() || '--')}</span>
+              <span class="ledger-main ledger-counterparty">Audit proof</span>
+              <span class="ledger-amount">${esc(volumeLabel)}</span>
               <span class="ledger-route">Scoped window</span>
               <span class="ledger-time">${esc(relativeTime(item.time))}</span>
               <button class="ledger-action ledger-action-cell" onclick="renderAuditResult(); document.getElementById('audit-overlay').classList.add('show')">Open</button>

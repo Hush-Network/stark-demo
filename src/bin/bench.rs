@@ -233,8 +233,12 @@ fn bench_provenance_attestation() -> (f64, f64, f64) {
     let issuer_key = M31::from(42u32);
     let issuer_id = poseidon2::derive_issuer_id(issuer_key);
     let subject = poseidon2::derive_owner(M31::from(12345u32));
-    let cm =
-        poseidon2::credential_commitment(issuer_id, subject, M31::from(2000u32), M31::from(777u32));
+    let cm = poseidon2::attestation_commitment(
+        issuer_id,
+        subject,
+        M31::from(2000u32),
+        M31::from(777u32),
+    );
 
     let mut issuer_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
     issuer_tree.set_leaf(0, issuer_id);
@@ -246,7 +250,7 @@ fn bench_provenance_attestation() -> (f64, f64, f64) {
 
     let witness = provenance_attestation::AttestationWitness {
         issuer_root: poseidon2::hashout_to_u32_array(issuer_tree.root()),
-        credential_commitment: poseidon2::hashout_to_u32_array(cm),
+        attestation_commitment: poseidon2::hashout_to_u32_array(cm),
         issuer_key: 42,
         subject: poseidon2::hashout_to_u32_array(subject),
         expiry: 2000,
@@ -267,15 +271,15 @@ fn bench_time_window() -> (f64, f64, f64) {
     let sk = M31::from(12345u32);
     let owner = poseidon2::derive_owner(sk);
     let issuer_id = poseidon2::derive_issuer_id(M31::from(1u32));
-    let cred_cm =
-        poseidon2::credential_commitment(issuer_id, owner, M31::from(2000u32), M31::from(777u32));
+    let attestation_commitment =
+        poseidon2::attestation_commitment(issuer_id, owner, M31::from(2000u32), M31::from(777u32));
 
-    let mut cred_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
-    cred_tree.set_leaf(0, cred_cm);
-    let path_vec = cred_tree.path(0);
-    let mut cred_path = [([0u32; 4], 0u32); MERKLE_DEPTH];
+    let mut attestation_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
+    attestation_tree.set_leaf(0, attestation_commitment);
+    let path_vec = attestation_tree.path(0);
+    let mut attestation_path = [([0u32; 4], 0u32); MERKLE_DEPTH];
     for i in 0..MERKLE_DEPTH {
-        cred_path[i] = (poseidon2::hashout_to_u32_array(path_vec[i].0), path_vec[i].1);
+        attestation_path[i] = (poseidon2::hashout_to_u32_array(path_vec[i].0), path_vec[i].1);
     }
 
     let mut amounts = [0u64; 16];
@@ -293,16 +297,16 @@ fn bench_time_window() -> (f64, f64, f64) {
         window_start: 50,
         window_end: 500,
         claimed_total: 110000u64,
-        cred_root: poseidon2::hashout_to_u32_array(cred_tree.root()),
+        attestation_root: poseidon2::hashout_to_u32_array(attestation_tree.root()),
         epoch: 1000,
         tx_amounts: amounts,
         tx_timestamps: timestamps,
         tx_count: 4,
         sk: 12345,
-        cred_issuer: 1,
-        cred_expiry: 2000,
-        cred_secret: 777,
-        cred_path,
+        attestation_issuer: 1,
+        attestation_expiry: 2000,
+        attestation_secret: 777,
+        attestation_path,
     };
 
     let mut times = Vec::new();

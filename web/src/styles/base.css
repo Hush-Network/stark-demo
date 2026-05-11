@@ -949,59 +949,13 @@
     }
 
     .rail-details[open] summary::after {
-      content: '−';
+      content: '-';
     }
 
     .rail-details-body {
       padding: 0 15px 15px;
       display: grid;
       gap: 9px;
-    }
-
-    .truth-grid {
-      display: grid;
-      gap: 10px;
-    }
-
-    .truth-card {
-      padding: 11px 12px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.025);
-    }
-
-    .truth-card strong {
-      display: block;
-      font-size: 13px;
-      margin-bottom: 5px;
-      color: var(--text);
-    }
-
-    .truth-card span {
-      display: block;
-      font-size: 13px;
-      line-height: 1.6;
-      color: var(--text-3);
-    }
-
-    .truth-card.product {
-      border-color: rgba(8, 145, 178, 0.25);
-      background: rgba(8, 145, 178, 0.09);
-    }
-
-    .truth-card.proof {
-      border-color: rgba(16, 185, 129, 0.24);
-      background: rgba(16, 185, 129, 0.08);
-    }
-
-    .truth-card.current {
-      border-color: rgba(139, 92, 246, 0.22);
-      background: rgba(139, 92, 246, 0.08);
-    }
-
-    .truth-card.future {
-      border-color: rgba(234, 179, 8, 0.22);
-      background: rgba(234, 179, 8, 0.08);
     }
 
     .proof-log {
@@ -1364,83 +1318,6 @@
 
     .audit-result-row span:last-child {
       color: var(--text);
-    }
-
-    .tour-overlay {
-      position: fixed;
-      inset: 0;
-      display: none;
-      z-index: 260;
-    }
-
-    .tour-overlay.show {
-      display: block;
-    }
-
-    .tour-highlight {
-      position: absolute;
-      border: 2px solid rgba(8, 145, 178, 0.7);
-      border-radius: 18px;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
-      transition: all 0.32s ease;
-      pointer-events: none;
-    }
-
-    .tour-card {
-      position: absolute;
-      width: min(360px, calc(100vw - 32px));
-      padding: 22px;
-      border-radius: 20px;
-      background: linear-gradient(180deg, rgba(21, 29, 38, 0.98), rgba(11, 15, 20, 0.98));
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow);
-      transition: all 0.32s ease;
-    }
-
-    .tour-step {
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--teal);
-      margin-bottom: 8px;
-    }
-
-    .tour-title {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 10px;
-      letter-spacing: -0.04em;
-    }
-
-    .tour-copy {
-      font-size: 14px;
-      line-height: 1.6;
-      color: var(--text-2);
-      margin-bottom: 18px;
-    }
-
-    .tour-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .tour-dots {
-      display: flex;
-      gap: 6px;
-    }
-
-    .tour-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.12);
-    }
-
-    .tour-dot.active {
-      background: var(--teal);
     }
 
     .toast-stack {
@@ -2372,77 +2249,7 @@
       line-height: 1;
       letter-spacing: -0.05em;
     }
-
-    .truth-status-grid {
-      display: grid;
-      gap: 16px;
-    }
-
-    .truth-status-row {
-      display: grid;
-      gap: 10px;
-    }
-
-    .truth-status-label {
-      color: #8fa3b8;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .truth-status-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .truth-pill {
-      padding: 8px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 600;
-      border: 1px solid rgba(120, 141, 167, 0.16);
-      background: rgba(255, 255, 255, 0.03);
-      color: #dce6f2;
-    }
-
-    .truth-pill-live {
-      border-color: rgba(16, 185, 129, 0.24);
-      color: #78e0b1;
-      background: rgba(16, 185, 129, 0.09);
-    }
-
-    .truth-pill-local {
-      border-color: rgba(139, 92, 246, 0.22);
-      color: #c7b2ff;
-      background: rgba(139, 92, 246, 0.09);
-    }
-
-    .truth-pill-target {
-      border-color: rgba(234, 179, 8, 0.22);
-      color: #f1d98a;
-      background: rgba(234, 179, 8, 0.08);
-    }
-
-    .truth-block-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 8px;
-    }
-
-    .truth-modal-link {
-      color: #8fc9ff;
-      text-decoration: none;
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .truth-modal-link:hover {
-      color: #bfe2ff;
-    }
-
-    .compact-stats-list {
+.compact-stats-list {
       display: grid;
       gap: 10px;
     }
@@ -2546,38 +2353,11 @@
     }
 
     @media (max-width: 1200px) {
-
-      .wallet-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .overview-content,
-      .send-layout {
-        grid-template-columns: 1fr;
-      }
-
-      .tour-card {
-        left: 16px !important;
-        right: 16px !important;
-        width: auto;
-      }
     }
 
     @media (max-width: 1360px) {
-      .dashboard-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .experience-shell {
-        max-width: 1120px;
-      }
-
       .metrics-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .experience-title {
-        white-space: normal;
       }
     }
 
@@ -2586,7 +2366,6 @@
         grid-template-columns: 1fr;
       }
 
-      .experience-head,
       .composer-head,
       .section-head {
         flex-direction: column;
@@ -2595,10 +2374,6 @@
 
       .dashboard-grid {
         grid-template-columns: 1fr;
-      }
-
-      .experience-title {
-        white-space: normal;
       }
     }
 
@@ -2610,15 +2385,7 @@
       .app-shell {
         padding: 0;
       }
-
-      .app-frame {
-        min-height: 100vh;
-        height: auto;
-        border: none;
-        border-radius: 0;
-      }
-
-      .topbar {
+.topbar {
         flex-direction: column;
         align-items: stretch;
         gap: 14px;
@@ -2634,28 +2401,16 @@
       }
 
       .composer-grid,
-      .summary-strip,
       .audit-grid,
-      .metric-row,
-      .session-stats,
       .metrics-grid {
         grid-template-columns: 1fr;
       }
-
-      .experience-head,
       .composer-head,
       .section-head {
         flex-direction: column;
         align-items: flex-start;
       }
-
-      .dashboard-grid,
-      .dashboard-column,
-      .summary-topline {
-        gap: 16px;
-      }
-
-      .balance-amount {
+.balance-amount {
         white-space: nowrap;
         font-size: clamp(28px, 9vw, 42px);
       }
@@ -2701,11 +2456,7 @@
         grid-column: 1 / -1;
         width: fit-content;
       }
-
-      .tour-highlight {
-        display: none;
-      }
-    }
+}
     /* 2026-04-13 product redesign override */
     body {
       overflow: auto;
@@ -3386,3 +3137,4 @@
         justify-self: start;
       }
     }
+

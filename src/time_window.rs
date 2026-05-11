@@ -57,16 +57,16 @@ pub struct TimeWindowWitness {
     pub window_start: u32,
     pub window_end: u32,
     pub claimed_total: u64,
-    pub cred_root: [u32; 4],
+    pub attestation_root: [u32; 4],
     pub epoch: u32,
     pub tx_amounts: [u64; MAX_TX],
     pub tx_timestamps: [u32; MAX_TX],
     pub tx_count: usize,
     pub sk: u32,
-    pub cred_issuer: u32,
-    pub cred_expiry: u32,
-    pub cred_secret: u32,
-    pub cred_path: [([u32; 4], u32); MERKLE_DEPTH],
+    pub attestation_issuer: u32,
+    pub attestation_expiry: u32,
+    pub attestation_secret: u32,
+    pub attestation_path: [([u32; 4], u32); MERKLE_DEPTH],
 }
 
 #[derive(Clone)]
@@ -86,13 +86,13 @@ impl FrameworkEval for TimeWindowEval {
         let window_end = eval.next_trace_mask();
         let claimed_total_limbs: [E::F; NUM_LIMBS] =
             core::array::from_fn(|_| eval.next_trace_mask());
-        let pub_cred_root: [E::F; 4] = core::array::from_fn(|_| eval.next_trace_mask());
-        let pub_cred_null: [E::F; 4] = core::array::from_fn(|_| eval.next_trace_mask());
+        let pub_attestation_root: [E::F; 4] = core::array::from_fn(|_| eval.next_trace_mask());
+        let pub_attestation_nullifier: [E::F; 4] = core::array::from_fn(|_| eval.next_trace_mask());
         let epoch = eval.next_trace_mask();
         let sk = eval.next_trace_mask();
-        let cred_issuer = eval.next_trace_mask();
-        let cred_expiry = eval.next_trace_mask();
-        let cred_secret = eval.next_trace_mask();
+        let attestation_issuer = eval.next_trace_mask();
+        let attestation_expiry = eval.next_trace_mask();
+        let attestation_secret = eval.next_trace_mask();
 
         let mut amount_limbs: [[E::F; NUM_LIMBS]; MAX_TX] =
             core::array::from_fn(|_| core::array::from_fn(|_| E::F::zero()));
@@ -119,7 +119,9 @@ impl FrameworkEval for TimeWindowEval {
             pow2 *= two.clone();
         }
         eval.add_constraint(reconstructed - expiry_diff.clone());
-        eval.add_constraint(expiry_diff - (cred_expiry.clone() - epoch.clone() - E::F::one()));
+        eval.add_constraint(
+            expiry_diff - (attestation_expiry.clone() - epoch.clone() - E::F::one()),
+        );
 
         // Summation carry bits
         let radix = E::F::from(M31::from(RADIX_U32));
@@ -197,7 +199,7 @@ impl FrameworkEval for TimeWindowEval {
             poseidon2_air::constrain_hash2(&mut eval, sk, E::F::zero(), poseidon2::DOMAIN_OWNER);
         let issuer_id_out = poseidon2_air::constrain_hash2(
             &mut eval,
-            cred_issuer,
+            attestation_issuer,
             E::F::zero(),
             poseidon2::DOMAIN_ISSUER_ID,
         );
@@ -210,17 +212,17 @@ impl FrameworkEval for TimeWindowEval {
             owner_out[1].clone(),
             owner_out[2].clone(),
             owner_out[3].clone(),
-            cred_expiry.clone(),
-            cred_secret.clone(),
+            attestation_expiry.clone(),
+            attestation_secret.clone(),
         ];
         let cm_out = poseidon2_air::constrain_sponge_2block(
             &mut eval,
             &cm_inputs,
             poseidon2::DOMAIN_CRED_CM,
         );
-        let crednull_out = poseidon2_air::constrain_hash_many_7(
+        let attestation_nullifier_out = poseidon2_air::constrain_hash_many_7(
             &mut eval,
-            cred_secret,
+            attestation_secret,
             cm_out[0].clone(),
             cm_out[1].clone(),
             cm_out[2].clone(),
@@ -230,7 +232,9 @@ impl FrameworkEval for TimeWindowEval {
             poseidon2::DOMAIN_CRED_NULL,
         );
         for j in 0..4 {
-            eval.add_constraint(pub_cred_null[j].clone() - crednull_out[j].clone());
+            eval.add_constraint(
+                pub_attestation_nullifier[j].clone() - attestation_nullifier_out[j].clone(),
+            );
         }
 
         let mut current = cm_out;
@@ -256,7 +260,7 @@ impl FrameworkEval for TimeWindowEval {
             );
         }
         for j in 0..4 {
-            eval.add_constraint(current[j].clone() - pub_cred_root[j].clone());
+            eval.add_constraint(current[j].clone() - pub_attestation_root[j].clone());
         }
 
         eval
@@ -269,8 +273,8 @@ pub struct TimeWindowPublicData {
     pub window_start: u32,
     pub window_end: u32,
     pub claimed_total: u64,
-    pub cred_root: [u32; 4],
-    pub cred_null: [u32; 4],
+    pub attestation_root: [u32; 4],
+    pub attestation_nullifier: [u32; 4],
     pub epoch: u32,
 }
 
@@ -279,10 +283,10 @@ impl TimeWindowPublicData {
         channel.mix_u64(self.window_start as u64);
         channel.mix_u64(self.window_end as u64);
         channel.mix_u64(self.claimed_total);
-        for &v in &self.cred_root {
+        for &v in &self.attestation_root {
             channel.mix_u64(v as u64);
         }
-        for &v in &self.cred_null {
+        for &v in &self.attestation_nullifier {
             channel.mix_u64(v as u64);
         }
         channel.mix_u64(self.epoch as u64);
@@ -324,27 +328,30 @@ pub fn prove_time_window(witness: &TimeWindowWitness) -> Result<AuditProofResult
 
     let sk = M31::from(witness.sk);
     let owner = poseidon2::derive_owner(sk);
-    let issuer_id = poseidon2::derive_issuer_id(M31::from(witness.cred_issuer));
-    let cred_cm = poseidon2::credential_commitment(
+    let issuer_id = poseidon2::derive_issuer_id(M31::from(witness.attestation_issuer));
+    let attestation_commitment = poseidon2::attestation_commitment(
         issuer_id,
         owner,
-        M31::from(witness.cred_expiry),
-        M31::from(witness.cred_secret),
+        M31::from(witness.attestation_expiry),
+        M31::from(witness.attestation_secret),
     );
-    let cred_null = poseidon2::credential_nullifier(
-        M31::from(witness.cred_secret),
-        cred_cm,
+    let attestation_nullifier = poseidon2::attestation_nullifier(
+        M31::from(witness.attestation_secret),
+        attestation_commitment,
         M31::from(witness.epoch),
     );
 
-    let cred_root = poseidon2::u32_array_to_hashout(witness.cred_root);
-    let cred_path: Vec<(poseidon2::HashOut, u32)> =
-        witness.cred_path.iter().map(|&(s, d)| (poseidon2::u32_array_to_hashout(s), d)).collect();
-    if !poseidon2::verify_merkle_path(cred_cm, &cred_path, cred_root) {
-        return Err("Credential root mismatch".to_string());
+    let attestation_root = poseidon2::u32_array_to_hashout(witness.attestation_root);
+    let attestation_path: Vec<(poseidon2::HashOut, u32)> = witness
+        .attestation_path
+        .iter()
+        .map(|&(s, d)| (poseidon2::u32_array_to_hashout(s), d))
+        .collect();
+    if !poseidon2::verify_merkle_path(attestation_commitment, &attestation_path, attestation_root) {
+        return Err("Attestation root mismatch".to_string());
     }
-    if witness.cred_expiry <= witness.epoch {
-        return Err("Credential expired".to_string());
+    if witness.attestation_expiry <= witness.epoch {
+        return Err("Attestation expired".to_string());
     }
 
     let ct_limbs = amount_to_limbs(witness.claimed_total);
@@ -370,7 +377,7 @@ pub fn prove_time_window(witness: &TimeWindowWitness) -> Result<AuditProofResult
     }
 
     let mut cols: Vec<BaseColumn> = (0..NUM_COLS).map(|_| BaseColumn::zeros(num_rows)).collect();
-    let expiry_diff_val = witness.cred_expiry - witness.epoch - 1;
+    let expiry_diff_val = witness.attestation_expiry - witness.epoch - 1;
     let mut expiry_bits = [M31::from(0u32); 16];
     for b in 0..16 {
         expiry_bits[b] = M31::from((expiry_diff_val >> b) & 1);
@@ -379,7 +386,7 @@ pub fn prove_time_window(witness: &TimeWindowWitness) -> Result<AuditProofResult
     let owner_hash_cols =
         poseidon2_air::gen_hash2_intermediates(sk, M31::from(0u32), poseidon2::DOMAIN_OWNER);
     let issuer_id_hash_cols = poseidon2_air::gen_hash2_intermediates(
-        M31::from(witness.cred_issuer),
+        M31::from(witness.attestation_issuer),
         M31::from(0u32),
         poseidon2::DOMAIN_ISSUER_ID,
     );
@@ -392,26 +399,27 @@ pub fn prove_time_window(witness: &TimeWindowWitness) -> Result<AuditProofResult
         owner[1],
         owner[2],
         owner[3],
-        M31::from(witness.cred_expiry),
-        M31::from(witness.cred_secret),
+        M31::from(witness.attestation_expiry),
+        M31::from(witness.attestation_secret),
     ];
     let cm_hash_cols = poseidon2_air::gen_sponge_2block_intermediates(
         &cm_sponge_inputs,
         poseidon2::DOMAIN_CRED_CM,
     );
-    let crednull_hash_cols = poseidon2_air::gen_hash_many_7_intermediates(
-        M31::from(witness.cred_secret),
-        cred_cm[0],
-        cred_cm[1],
-        cred_cm[2],
-        cred_cm[3],
+    let attestation_nullifier_hash_cols = poseidon2_air::gen_hash_many_7_intermediates(
+        M31::from(witness.attestation_secret),
+        attestation_commitment[0],
+        attestation_commitment[1],
+        attestation_commitment[2],
+        attestation_commitment[3],
         M31::from(witness.epoch),
         M31::from(0u32),
         poseidon2::DOMAIN_CRED_NULL,
     );
-    let merkle_data = gen_cred_merkle_trace(cred_cm, &witness.cred_path);
-    let cred_root_arr = poseidon2::hashout_to_u32_array(cred_root);
-    let cred_null_arr = poseidon2::hashout_to_u32_array(cred_null);
+    let merkle_data =
+        gen_attestation_merkle_trace(attestation_commitment, &witness.attestation_path);
+    let attestation_root_arr = poseidon2::hashout_to_u32_array(attestation_root);
+    let attestation_nullifier_arr = poseidon2::hashout_to_u32_array(attestation_nullifier);
 
     for r in 0..num_rows {
         let mut c = 0usize;
@@ -424,22 +432,22 @@ pub fn prove_time_window(witness: &TimeWindowWitness) -> Result<AuditProofResult
             c += 1;
         }
         for j in 0..4 {
-            cols[c].set(r, M31::from(cred_root_arr[j]));
+            cols[c].set(r, M31::from(attestation_root_arr[j]));
             c += 1;
         }
         for j in 0..4 {
-            cols[c].set(r, M31::from(cred_null_arr[j]));
+            cols[c].set(r, M31::from(attestation_nullifier_arr[j]));
             c += 1;
         }
         cols[c].set(r, M31::from(witness.epoch));
         c += 1;
         cols[c].set(r, sk);
         c += 1;
-        cols[c].set(r, M31::from(witness.cred_issuer));
+        cols[c].set(r, M31::from(witness.attestation_issuer));
         c += 1;
-        cols[c].set(r, M31::from(witness.cred_expiry));
+        cols[c].set(r, M31::from(witness.attestation_expiry));
         c += 1;
-        cols[c].set(r, M31::from(witness.cred_secret));
+        cols[c].set(r, M31::from(witness.attestation_secret));
         c += 1;
         for i in 0..MAX_TX {
             for k in 0..NUM_LIMBS {
@@ -499,8 +507,8 @@ pub fn prove_time_window(witness: &TimeWindowWitness) -> Result<AuditProofResult
             cols[h + j].set(r, cm_hash_cols[j]);
         }
         h += cm_hash_cols.len();
-        for j in 0..crednull_hash_cols.len() {
-            cols[h + j].set(r, crednull_hash_cols[j]);
+        for j in 0..attestation_nullifier_hash_cols.len() {
+            cols[h + j].set(r, attestation_nullifier_hash_cols[j]);
         }
         for j in 0..merkle_data.len() {
             cols[MERKLE_START + j].set(r, merkle_data[j]);
@@ -515,8 +523,8 @@ pub fn prove_time_window(witness: &TimeWindowWitness) -> Result<AuditProofResult
         window_start: witness.window_start,
         window_end: witness.window_end,
         claimed_total: witness.claimed_total,
-        cred_root: witness.cred_root,
-        cred_null: cred_null_arr,
+        attestation_root: witness.attestation_root,
+        attestation_nullifier: attestation_nullifier_arr,
         epoch: witness.epoch,
     };
 
@@ -565,7 +573,7 @@ pub fn verify_time_window(result: &AuditProofResult) -> Result<(), String> {
         .map_err(|e| format!("Time-window verification failed: {e:?}"))
 }
 
-fn gen_cred_merkle_trace(
+fn gen_attestation_merkle_trace(
     leaf: poseidon2::HashOut,
     path: &[([u32; 4], u32); MERKLE_DEPTH],
 ) -> Vec<M31> {
@@ -598,19 +606,19 @@ mod tests {
         let sk = M31::from(12345u32);
         let owner = poseidon2::derive_owner(sk);
         let issuer_id = poseidon2::derive_issuer_id(M31::from(1u32));
-        let cred_cm = poseidon2::credential_commitment(
+        let attestation_commitment = poseidon2::attestation_commitment(
             issuer_id,
             owner,
             M31::from(2000u32),
             M31::from(777u32),
         );
-        let mut cred_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
-        cred_tree.set_leaf(0, cred_cm);
-        let cred_root = cred_tree.root();
-        let path_vec = cred_tree.path(0);
-        let mut cred_path = [([0u32; 4], 0u32); MERKLE_DEPTH];
+        let mut attestation_tree = poseidon2::SparseMerkleTree::new(MERKLE_DEPTH);
+        attestation_tree.set_leaf(0, attestation_commitment);
+        let attestation_root = attestation_tree.root();
+        let path_vec = attestation_tree.path(0);
+        let mut attestation_path = [([0u32; 4], 0u32); MERKLE_DEPTH];
         for i in 0..MERKLE_DEPTH {
-            cred_path[i] = (poseidon2::hashout_to_u32_array(path_vec[i].0), path_vec[i].1);
+            attestation_path[i] = (poseidon2::hashout_to_u32_array(path_vec[i].0), path_vec[i].1);
         }
 
         let mut amounts = [0u64; MAX_TX];
@@ -628,16 +636,16 @@ mod tests {
             window_start: 50,
             window_end: 500,
             claimed_total: 110000,
-            cred_root: poseidon2::hashout_to_u32_array(cred_root),
+            attestation_root: poseidon2::hashout_to_u32_array(attestation_root),
             epoch: 1000,
             tx_amounts: amounts,
             tx_timestamps: timestamps,
             tx_count: 4,
             sk: 12345,
-            cred_issuer: 1,
-            cred_expiry: 2000,
-            cred_secret: 777,
-            cred_path,
+            attestation_issuer: 1,
+            attestation_expiry: 2000,
+            attestation_secret: 777,
+            attestation_path,
         }
     }
 

@@ -1,4 +1,4 @@
-// Full protocol lifecycle: issuance -> payment -> second spend -> audit -> double-spend rejection.
+// Full protocol lifecycle: attestation -> payment -> second spend -> audit -> double-spend rejection.
 // Demonstrates all three circuits composing into a coherent ledger model.
 // Run: cargo run --bin lifecycle --release
 
@@ -16,7 +16,7 @@ use stwo::core::fields::m31::M31;
 
 struct LedgerState {
     note_tree: poseidon2::SparseMerkleTree,
-    cred_tree: poseidon2::SparseMerkleTree,
+    attestation_tree: poseidon2::SparseMerkleTree,
     issuer_tree: poseidon2::SparseMerkleTree,
     nullifier_set: HashSet<[u32; 4]>,
     next_note_idx: usize,
@@ -26,7 +26,7 @@ impl LedgerState {
     fn new() -> Self {
         LedgerState {
             note_tree: poseidon2::SparseMerkleTree::new(MERKLE_DEPTH),
-            cred_tree: poseidon2::SparseMerkleTree::new(MERKLE_DEPTH),
+            attestation_tree: poseidon2::SparseMerkleTree::new(MERKLE_DEPTH),
             issuer_tree: poseidon2::SparseMerkleTree::new(MERKLE_DEPTH),
             nullifier_set: HashSet::new(),
             next_note_idx: 0,
@@ -40,8 +40,8 @@ impl LedgerState {
         idx
     }
 
-    fn add_credential(&mut self, index: usize, commitment: poseidon2::HashOut) {
-        self.cred_tree.set_leaf(index, commitment);
+    fn add_attestation(&mut self, index: usize, commitment: poseidon2::HashOut) {
+        self.attestation_tree.set_leaf(index, commitment);
     }
 
     fn add_issuer(&mut self, index: usize, issuer_id: poseidon2::HashOut) {
@@ -52,13 +52,11 @@ impl LedgerState {
         poseidon2::hashout_to_u32_array(self.note_tree.root())
     }
 
-    fn cred_root_u32(&self) -> [u32; 4] {
-        poseidon2::hashout_to_u32_array(self.cred_tree.root())
+    fn attestation_root_u32(&self) -> [u32; 4] {
+        poseidon2::hashout_to_u32_array(self.attestation_tree.root())
     }
 
-    /// Apply a payment: check note root, reject double-spends, record nullifiers.
-    /// The credential gate has been removed from the payment circuit (v1 compliance
-    /// model). Provenance continuity is enforced circuit-side via att_root matching.
+    /// Apply a payment by checking note-root continuity and rejecting double-spends.
     fn apply_payment(&mut self, public_data: &circuit::PaymentPublicData) -> Result<(), String> {
         if public_data.note_root != self.note_root_u32() {
             return Err("Note root mismatch".to_string());
@@ -160,7 +158,7 @@ fn fmt_hashout_m31(h: poseidon2::HashOut) -> String {
 
 fn main() {
     println!("\n=== Hush Network: Full Protocol Lifecycle ===");
-    println!("Three circuits: Credential Issuance + Payment + Time-Window Audit");
+    println!("Three circuits: Provenance Attestation + Payment + Time-Window Audit");
     println!("Merkle depth: {} ({} leaves)\n", MERKLE_DEPTH, 1u64 << MERKLE_DEPTH);
 
     let mut ledger = LedgerState::new();
@@ -178,13 +176,13 @@ fn main() {
     println!("\nStep 2: Provenance attestation circuit");
     let alice_sk = 12345u32;
     let alice_owner = poseidon2::derive_owner(M31::from(alice_sk));
-    let cred_expiry = 2000u32;
-    let cred_secret = 777u32;
-    let cred_cm = poseidon2::credential_commitment(
+    let attestation_expiry = 2000u32;
+    let attestation_secret = 777u32;
+    let attestation_commitment = poseidon2::attestation_commitment(
         issuer_id,
         alice_owner,
-        M31::from(cred_expiry),
-        M31::from(cred_secret),
+        M31::from(attestation_expiry),
+        M31::from(attestation_secret),
     );
 
     let issuer_path_vec = ledger.issuer_tree.path(0);
@@ -194,27 +192,27 @@ fn main() {
             (poseidon2::hashout_to_u32_array(issuer_path_vec[i].0), issuer_path_vec[i].1);
     }
 
-    let issuance_witness = provenance_attestation::AttestationWitness {
+    let attestation_witness = provenance_attestation::AttestationWitness {
         issuer_root: poseidon2::hashout_to_u32_array(ledger.issuer_tree.root()),
-        credential_commitment: poseidon2::hashout_to_u32_array(cred_cm),
+        attestation_commitment: poseidon2::hashout_to_u32_array(attestation_commitment),
         issuer_key,
         subject: poseidon2::hashout_to_u32_array(alice_owner),
-        expiry: cred_expiry,
-        secret: cred_secret,
+        expiry: attestation_expiry,
+        secret: attestation_secret,
         issuer_path,
     };
 
     print!("  Proving provenance attestation... ");
     let start = std::time::Instant::now();
-    provenance_attestation::prove_provenance_attestation(&issuance_witness)
+    provenance_attestation::prove_provenance_attestation(&attestation_witness)
         .expect("Provenance attestation proof failed");
     println!("done ({} ms, proved + verified)", start.elapsed().as_millis());
-    println!("  Credential commitment: {}", fmt_hashout_m31(cred_cm));
+    println!("  Attestation commitment: {}", fmt_hashout_m31(attestation_commitment));
 
-    ledger.add_credential(0, cred_cm);
+    ledger.add_attestation(0, attestation_commitment);
     println!(
-        "  Credential registered in ledger (cred tree root: {})",
-        fmt_hashout_m31(ledger.cred_tree.root())
+        "  Attestation registered in ledger (attestation tree root: {})",
+        fmt_hashout_m31(ledger.attestation_tree.root())
     );
 
     // --- Step 3: Create initial notes for Alice ---
@@ -333,12 +331,12 @@ fn main() {
     println!("  Second spend accepted. Nullifiers: {}", ledger.nullifier_set.len());
 
     // --- Step 6: Time-window audit (CIRCUIT 3) ---
-    // The time-window circuit retains the credential gate for selective disclosure
-    // proofs -- the prover binds the audit window to their credential.
+    // The time-window circuit retains the attestation gate for selective disclosure
+    // proofs. The prover binds the audit window to their attestation.
     println!("\nStep 6: Time-window audit circuit");
     println!("  Alice proves aggregate spend over epoch window without revealing individual txs");
 
-    let cred_path = path_to_u32(&ledger.cred_tree.path(0));
+    let attestation_path = path_to_u32(&ledger.attestation_tree.path(0));
 
     let mut amounts = [0u64; 16];
     let mut timestamps = [0u32; 16];
@@ -352,16 +350,16 @@ fn main() {
         window_start: 999,
         window_end: 1002,
         claimed_total,
-        cred_root: ledger.cred_root_u32(),
+        attestation_root: ledger.attestation_root_u32(),
         epoch: epoch_2,
         tx_amounts: amounts,
         tx_timestamps: timestamps,
         tx_count: 2,
         sk: alice_sk,
-        cred_issuer: issuer_key,
-        cred_expiry,
-        cred_secret,
-        cred_path,
+        attestation_issuer: issuer_key,
+        attestation_expiry,
+        attestation_secret,
+        attestation_path,
     };
 
     print!("  Proving time-window audit... ");
