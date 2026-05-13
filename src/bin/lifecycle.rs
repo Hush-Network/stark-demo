@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use hush_demo_stark::{
     circuit,
     payment_tx::{
-        compute_mode_a_tx_binding_hash, derive_sender_binding_tag, PAYMENT_TX_V1_REPLAY_DOMAIN,
+        compute_payment_tx_binding_hash, derive_sender_binding_tag, PAYMENT_TX_V1_REPLAY_DOMAIN,
     },
     poseidon2, provenance_attestation, time_window,
     types::{PaymentWitness, MERKLE_DEPTH},
@@ -101,7 +101,7 @@ fn build_payment_witness(
     let note_path_0 = path_to_u32(&ledger.note_tree.path(in_idx_0));
     let note_path_1 = path_to_u32(&ledger.note_tree.path(in_idx_1));
 
-    let tx_binding_hash = compute_mode_a_tx_binding_hash(
+    let tx_binding_hash = compute_payment_tx_binding_hash(
         PAYMENT_TX_V1_REPLAY_DOMAIN,
         in_asset,
         in_asset,

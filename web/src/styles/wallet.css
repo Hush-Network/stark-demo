@@ -559,6 +559,12 @@
 .app-root .asset-row:first-child { border-top: 0; }
 .app-root .asset-row:hover { background: var(--w-line-2); }
 .app-root .asset-row.is-active { background: color-mix(in oklab, var(--brand-accent) 8%, transparent); }
+.app-root .asset-row.is-static {
+  cursor: default;
+}
+.app-root .asset-row.is-static:hover {
+  background: transparent;
+}
 
 .app-root .asset-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .app-root .asset-bubble {

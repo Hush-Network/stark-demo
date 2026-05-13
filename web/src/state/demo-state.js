@@ -13,7 +13,6 @@ export function createInitialState() {
   return {
     provenanceStatus: 'valid',
     activeAsset: 'USDC',
-    feeMode: 'same_asset',
     currentRecipient: DEMO_DEFAULT_RECIPIENT,
     currentAmountInput: DEMO_DEFAULT_AMOUNT,
     balancesUnits: { ...DEMO_INITIAL_BALANCES_UNITS },

@@ -101,8 +101,9 @@ const ASSET_DEFS = [
   { sym: 'USDC', name: 'USD Coin', glyph: '$' },
   {
     sym: 'HUSH',
-    name: 'Hush Network',
+    name: 'HUSH gas reserve',
     glyph: '<img src="/images/hushlogo.png" alt="HUSH" class="asset-logo">',
+    selectable: false,
   },
 ];
 
@@ -213,8 +214,9 @@ export function renderBalanceCard(_state, opts = {}) {
 export function renderBalancesTable(state, balanceFor) {
   const rows = ASSET_DEFS.map((asset) => {
     const row = balanceFor(asset.sym);
+    const selectable = asset.selectable !== false;
     return `
-      <li class="asset-row ${state.activeAsset === asset.sym ? 'is-active' : ''}" onclick="switchAsset('${asset.sym}')">
+      <li class="asset-row ${selectable ? '' : 'is-static'} ${selectable && state.activeAsset === asset.sym ? 'is-active' : ''}" ${selectable ? `onclick="switchAsset('${asset.sym}')"` : ''}>
         <div class="asset-left">
           <div class="asset-bubble">${asset.glyph}</div>
           <div class="asset-name">

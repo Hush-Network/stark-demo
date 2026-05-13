@@ -3,10 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    payment_tx::{
-        validate_tx_kind_fee_asset_policy, AssetId, PaymentTxV1, TxKind,
-        PAYMENT_STANDARD_FEE_SCHEDULE_VERSION, PAYMENT_TX_V1_REPLAY_DOMAIN,
-    },
+    payment_tx::{AssetId, PaymentTxV1},
     payment_validation::{validate_payment_bundle, PaymentBundleProof},
 };
 
@@ -112,61 +109,6 @@ pub fn accepted_payment_record(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProtocolActionTx {
-    pub action_id: u64,
-    pub tx_kind: u32,
-    pub fee_asset: u32,
-    pub fee_amount: u64,
-    pub fee_schedule_version: u32,
-    pub replay_domain: u32,
-}
-
-impl ProtocolActionTx {
-    pub fn build(tx_kind: TxKind, action_id: u64, fee_amount: u64) -> Result<Self, String> {
-        if tx_kind == TxKind::Payment {
-            return Err("ProtocolActionTx cannot use payment tx_kind".to_string());
-        }
-        Ok(Self {
-            action_id,
-            tx_kind: tx_kind.as_u32(),
-            fee_asset: AssetId::Hush as u32,
-            fee_amount,
-            fee_schedule_version: PAYMENT_STANDARD_FEE_SCHEDULE_VERSION,
-            replay_domain: PAYMENT_TX_V1_REPLAY_DOMAIN,
-        })
-    }
-}
-
-pub fn validate_protocol_action_tx(tx: &ProtocolActionTx) -> Result<TxKind, String> {
-    let tx_kind = TxKind::try_from_u32(tx.tx_kind)?;
-    if tx_kind == TxKind::Payment {
-        return Err("payment tx_kind must use PaymentTxV1".to_string());
-    }
-    validate_tx_kind_fee_asset_policy(tx.tx_kind, None, tx.fee_asset)?;
-    if tx.fee_schedule_version != PAYMENT_STANDARD_FEE_SCHEDULE_VERSION {
-        return Err(format!("unsupported fee_schedule_version {}", tx.fee_schedule_version));
-    }
-    if tx.replay_domain != PAYMENT_TX_V1_REPLAY_DOMAIN {
-        return Err(format!("invalid replay_domain {}", tx.replay_domain));
-    }
-    if tx.fee_amount == 0 {
-        return Err("protocol action fee amount must be non-zero".to_string());
-    }
-    Ok(tx_kind)
-}
-
-pub fn accepted_protocol_action_record(tx: &ProtocolActionTx) -> Result<AcceptedTxRecord, String> {
-    validate_protocol_action_tx(tx)?;
-    Ok(AcceptedTxRecord {
-        tx_id: tx.action_id,
-        tx_kind: tx.tx_kind,
-        fee_asset: tx.fee_asset,
-        fee_amount: tx.fee_amount,
-        fee_schedule_version: tx.fee_schedule_version,
-    })
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockAccountingRecord {
     pub block_height: u64,
     pub proposer_id: u32,
@@ -236,11 +178,6 @@ impl BlockAccountingBuilder {
         bundle: &PaymentBundleProof,
     ) -> Result<(), String> {
         let record = accepted_payment_record(tx, bundle)?;
-        self.record_accepted_tx_record(&record)
-    }
-
-    pub fn record_protocol_action(&mut self, tx: &ProtocolActionTx) -> Result<(), String> {
-        let record = accepted_protocol_action_record(tx)?;
         self.record_accepted_tx_record(&record)
     }
 
@@ -591,8 +528,7 @@ fn allocate_asset_bucket(
 mod tests {
     use super::*;
     use crate::{
-        payment_fixtures::{valid_usdc_hush_fee_fixture, valid_usdc_same_asset_fixture},
-        payment_tx::{AssetId, TxKind, TX_KIND_PAYMENT},
+        payment_fixtures::valid_usdc_hush_fee_fixture, payment_tx::TX_KIND_PAYMENT,
         payment_validation,
     };
 
@@ -620,60 +556,47 @@ mod tests {
         ]
     }
 
-    fn build_mode_a_bundle_record() -> (PaymentTxV1, PaymentBundleProof, AcceptedTxRecord) {
-        let fixture = valid_usdc_same_asset_fixture();
-        let bundle = payment_validation::prove_payment_bundle(&fixture.tx, &fixture.witness, None)
-            .expect("Mode A bundle should prove");
-        let record =
-            accepted_payment_record(&fixture.tx, &bundle).expect("Mode A bundle should validate");
-        (fixture.tx, bundle, record)
-    }
-
-    fn build_mode_b_bundle_record() -> (PaymentTxV1, PaymentBundleProof, AcceptedTxRecord) {
+    fn build_hush_gas_bundle_record() -> (PaymentTxV1, PaymentBundleProof, AcceptedTxRecord) {
         let fixture = valid_usdc_hush_fee_fixture();
         let bundle = payment_validation::prove_payment_bundle(
             &fixture.tx,
             &fixture.witness,
             fixture.fee_sidecar_witness.as_ref(),
         )
-        .expect("Mode B bundle should prove");
+        .expect("HUSH gas bundle should prove");
         let record =
-            accepted_payment_record(&fixture.tx, &bundle).expect("Mode B bundle should validate");
+            accepted_payment_record(&fixture.tx, &bundle).expect("HUSH gas bundle should validate");
         (fixture.tx, bundle, record)
     }
 
     #[test]
     fn test_block_fee_bucket_accumulation_by_asset() {
-        let (mode_a_tx, mode_a_bundle, _) = build_mode_a_bundle_record();
-        let (mode_b_tx, mode_b_bundle, _) = build_mode_b_bundle_record();
-        let action = ProtocolActionTx::build(TxKind::ValidatorAction, 7, 9)
-            .expect("validator action should build");
+        let (hush_gas_tx, hush_gas_bundle, _) = build_hush_gas_bundle_record();
 
         let mut block = BlockAccountingBuilder::new(10, 99);
         block
-            .record_payment_bundle(&mode_a_tx, &mode_a_bundle)
-            .expect("Mode A payment should count");
-        block
-            .record_payment_bundle(&mode_b_tx, &mode_b_bundle)
-            .expect("Mode B payment should count");
-        block.record_protocol_action(&action).expect("validator action should count");
+            .record_payment_bundle(&hush_gas_tx, &hush_gas_bundle)
+            .expect("HUSH gas payment should count");
         let record = block.finalize();
         record.validate().expect("block accounting should reconcile");
 
-        assert_eq!(record.fee_buckets.usdc, 50);
-        assert_eq!(record.fee_buckets.hush, 59);
+        assert_eq!(record.fee_buckets.usdc, 0);
+        assert_eq!(record.fee_buckets.hush, 50);
         assert_eq!(record.fee_buckets.usdt, 0);
-        assert_eq!(record.tx_counts_by_asset.usdc, 1);
-        assert_eq!(record.tx_counts_by_asset.hush, 2);
-        assert_eq!(record.tx_counts_by_kind.get(&TX_KIND_PAYMENT), Some(&2));
-        assert_eq!(record.tx_counts_by_kind.get(&TxKind::ValidatorAction.as_u32()), Some(&1));
+        assert_eq!(record.tx_counts_by_asset.usdc, 0);
+        assert_eq!(record.tx_counts_by_asset.hush, 1);
+        assert_eq!(record.tx_counts_by_kind.get(&TX_KIND_PAYMENT), Some(&1));
     }
 
     #[test]
     fn test_rejected_tx_does_not_affect_fee_buckets() {
-        let fixture = valid_usdc_same_asset_fixture();
-        let bundle = payment_validation::prove_payment_bundle(&fixture.tx, &fixture.witness, None)
-            .expect("Mode A bundle should prove");
+        let fixture = valid_usdc_hush_fee_fixture();
+        let bundle = payment_validation::prove_payment_bundle(
+            &fixture.tx,
+            &fixture.witness,
+            fixture.fee_sidecar_witness.as_ref(),
+        )
+        .expect("HUSH gas bundle should prove");
         let mut bad_tx = fixture.tx.clone();
         bad_tx.tx_binding_hash[0] = bad_tx.tx_binding_hash[0].wrapping_add(1);
 
@@ -684,7 +607,7 @@ mod tests {
 
     #[test]
     fn test_per_block_totals_reconcile() {
-        let (_, _, record) = build_mode_a_bundle_record();
+        let (_, _, record) = build_hush_gas_bundle_record();
         let mut block = BlockAccountingBuilder::new(12, 2);
         block.record_accepted_tx_record(&record).expect("accepted record should count");
         let record = block.finalize();
@@ -693,15 +616,16 @@ mod tests {
 
     #[test]
     fn test_epoch_fee_pool_accumulation_by_asset() {
-        let (_, _, mode_a_record) = build_mode_a_bundle_record();
-        let (_, _, mode_b_record) = build_mode_b_bundle_record();
+        let (_, _, hush_gas_record) = build_hush_gas_bundle_record();
 
         let mut block_a = BlockAccountingBuilder::new(20, 1);
-        block_a.record_accepted_tx_record(&mode_a_record).expect("accepted record should count");
+        block_a.record_accepted_tx_record(&hush_gas_record).expect("accepted record should count");
         let block_a = block_a.finalize();
 
+        let mut second_record = hush_gas_record.clone();
+        second_record.tx_id = second_record.tx_id.wrapping_add(1);
         let mut block_b = BlockAccountingBuilder::new(21, 1);
-        block_b.record_accepted_tx_record(&mode_b_record).expect("accepted record should count");
+        block_b.record_accepted_tx_record(&second_record).expect("accepted record should count");
         let block_b = block_b.finalize();
 
         let validators = sample_validators();
@@ -714,20 +638,21 @@ mod tests {
             .apply_block(&block_b, &validators, &participation)
             .expect("second block should accrue");
 
-        assert_eq!(epoch.fee_pools(), AssetFeeBuckets { hush: 50, usdc: 50, usdt: 0 });
+        assert_eq!(epoch.fee_pools(), AssetFeeBuckets { hush: 100, usdc: 0, usdt: 0 });
     }
 
     #[test]
     fn test_validator_participation_affects_entitlement() {
-        let (_, _, mode_a_record) = build_mode_a_bundle_record();
-        let (_, _, mode_b_record) = build_mode_b_bundle_record();
+        let (_, _, hush_gas_record) = build_hush_gas_bundle_record();
 
         let mut block_a = BlockAccountingBuilder::new(30, 1);
-        block_a.record_accepted_tx_record(&mode_a_record).expect("accepted record should count");
+        block_a.record_accepted_tx_record(&hush_gas_record).expect("accepted record should count");
         let block_a = block_a.finalize();
 
+        let mut second_record = hush_gas_record.clone();
+        second_record.tx_id = second_record.tx_id.wrapping_add(1);
         let mut block_b = BlockAccountingBuilder::new(31, 1);
-        block_b.record_accepted_tx_record(&mode_b_record).expect("accepted record should count");
+        block_b.record_accepted_tx_record(&second_record).expect("accepted record should count");
         let block_b = block_b.finalize();
 
         let validators = sample_validators();
@@ -762,28 +687,20 @@ mod tests {
         let validator_two =
             settlement.validator_entitlements.get(&2).expect("validator 2 should accrue");
 
-        assert_eq!(validator_one.entitlement.usdc, 25);
-        assert_eq!(validator_two.entitlement.usdc, 25);
-        assert_eq!(validator_one.entitlement.hush, 50);
-        assert_eq!(validator_two.entitlement.hush, 0);
+        assert_eq!(validator_one.entitlement.usdc, 0);
+        assert_eq!(validator_two.entitlement.usdc, 0);
+        assert_eq!(validator_one.entitlement.hush, 75);
+        assert_eq!(validator_two.entitlement.hush, 25);
         assert_eq!(validator_one.present_blocks, 2);
         assert_eq!(validator_two.missed_blocks, 1);
     }
 
     #[test]
     fn test_mixed_basket_payout_reconciliation() {
-        let (_, _, mode_a_record) = build_mode_a_bundle_record();
-        let (_, _, mode_b_record) = build_mode_b_bundle_record();
-        let action = accepted_protocol_action_record(
-            &ProtocolActionTx::build(TxKind::IssuerAction, 44, 7)
-                .expect("issuer action should build"),
-        )
-        .expect("issuer action should validate");
+        let (_, _, hush_gas_record) = build_hush_gas_bundle_record();
 
         let mut block = BlockAccountingBuilder::new(40, 1);
-        block.record_accepted_tx_record(&mode_a_record).expect("accepted record should count");
-        block.record_accepted_tx_record(&mode_b_record).expect("accepted record should count");
-        block.record_accepted_tx_record(&action).expect("accepted record should count");
+        block.record_accepted_tx_record(&hush_gas_record).expect("accepted record should count");
         let block = block.finalize();
 
         let validators = sample_validators();
@@ -795,37 +712,15 @@ mod tests {
         let payout_totals = settlement.total_payouts().expect("payouts should sum");
 
         assert_eq!(settlement.fee_pools, payout_totals);
-        assert_eq!(payout_totals.usdc, 50);
-        assert_eq!(payout_totals.hush, 57);
+        assert_eq!(payout_totals.usdc, 0);
+        assert_eq!(payout_totals.hush, 50);
         assert_eq!(payout_totals.usdt, 0);
         assert_eq!(settlement.payout_records.len(), 2);
     }
 
     #[test]
-    fn test_non_payment_action_with_non_hush_fee_rejected() {
-        let mut action = ProtocolActionTx::build(TxKind::ProtocolAdminAction, 55, 3)
-            .expect("protocol admin action should build");
-        action.fee_asset = AssetId::Usdc as u32;
-        assert!(validate_protocol_action_tx(&action).is_err());
-    }
-
-    #[test]
-    fn test_canonical_transaction_kind_mapping_enforced() {
-        let action = ProtocolActionTx::build(TxKind::ProvenanceStateAction, 66, 4)
-            .expect("provenance action should build");
-        validate_protocol_action_tx(&action).expect("provenance action should accept HUSH");
-
-        assert!(validate_tx_kind_fee_asset_policy(
-            TxKind::ProvenanceStateAction.as_u32(),
-            None,
-            AssetId::Usdt as u32,
-        )
-        .is_err());
-    }
-
-    #[test]
     fn test_accounting_does_not_drift_from_validated_tx_inputs() {
-        let (tx, bundle, record) = build_mode_b_bundle_record();
+        let (tx, bundle, record) = build_hush_gas_bundle_record();
         let mut block = BlockAccountingBuilder::new(50, 1);
         block.record_payment_bundle(&tx, &bundle).expect("validated bundle should count");
         let block = block.finalize();
@@ -836,7 +731,7 @@ mod tests {
 
     #[test]
     fn test_same_tx_cannot_be_double_counted() {
-        let (_, _, record) = build_mode_a_bundle_record();
+        let (_, _, record) = build_hush_gas_bundle_record();
         let mut block = BlockAccountingBuilder::new(60, 1);
         block.record_accepted_tx_record(&record).expect("accepted record should count");
         assert!(block.record_accepted_tx_record(&record).is_err());
@@ -844,11 +739,11 @@ mod tests {
 
     #[test]
     fn test_malformed_accounting_state_transition_rejected() {
-        let (_, _, record) = build_mode_a_bundle_record();
+        let (_, _, record) = build_hush_gas_bundle_record();
         let mut block = BlockAccountingBuilder::new(70, 1);
         block.record_accepted_tx_record(&record).expect("accepted record should count");
         let mut block = block.finalize();
-        block.fee_buckets.usdc += 1;
+        block.fee_buckets.hush += 1;
 
         let validators = sample_validators();
         let participation = sample_participation_all_present();
@@ -858,10 +753,10 @@ mod tests {
 
     #[test]
     fn test_liveness_and_slash_hooks_reduce_entitlement() {
-        let (_, _, mode_b_record) = build_mode_b_bundle_record();
+        let (_, _, hush_gas_record) = build_hush_gas_bundle_record();
 
         let mut block = BlockAccountingBuilder::new(80, 1);
-        block.record_accepted_tx_record(&mode_b_record).expect("accepted record should count");
+        block.record_accepted_tx_record(&hush_gas_record).expect("accepted record should count");
         let block = block.finalize();
 
         let validators = sample_validators();

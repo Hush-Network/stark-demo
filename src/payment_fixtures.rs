@@ -101,17 +101,6 @@ fn build_context(
     let recipient_owner_hash =
         poseidon2::hashout_to_u32_array(poseidon2::derive_owner(M31::from(recipient_owner)));
     let tx = match route {
-        PaymentRoute::SameAsset => PaymentTxV1::build_same_asset(
-            payment_asset,
-            payment_inputs.clone(),
-            RecipientIntent {
-                amount: recipient_amount,
-                owner: recipient_owner_hash,
-                randomness: recipient_randomness,
-            },
-            sender_change_randomness,
-            sk,
-        ),
         PaymentRoute::HushSidecar => PaymentTxV1::build_with_hush_fee(
             payment_asset,
             payment_inputs.clone(),
@@ -144,7 +133,6 @@ fn build_context(
                 .expect("fixture HUSH sidecar should build"),
             )
         }
-        (PaymentRoute::SameAsset, None, None) => None,
         _ => panic!("fixture route and HUSH sidecar parameters must match"),
     };
 
@@ -154,44 +142,6 @@ fn build_context(
         witness,
         fee_sidecar_witness,
     }
-}
-
-pub fn valid_usdc_same_asset_fixture() -> PaymentFixtureContext {
-    build_context(
-        PaymentRoute::SameAsset,
-        12_345,
-        AssetId::Usdc,
-        [
-            NoteInput { amount: 7_000, randomness: 111 },
-            NoteInput { amount: 3_000, randomness: 222 },
-        ],
-        8_000,
-        99_999,
-        333,
-        444,
-        None,
-        None,
-        1_000,
-    )
-}
-
-pub fn valid_usdt_same_asset_fixture() -> PaymentFixtureContext {
-    build_context(
-        PaymentRoute::SameAsset,
-        22_222,
-        AssetId::Usdt,
-        [
-            NoteInput { amount: 9_500, randomness: 555 },
-            NoteInput { amount: 1_500, randomness: 666 },
-        ],
-        10_000,
-        88_888,
-        777,
-        888,
-        None,
-        None,
-        1_000,
-    )
 }
 
 pub fn valid_usdc_hush_fee_fixture() -> PaymentFixtureContext {
@@ -246,8 +196,10 @@ pub fn missing_sidecar_hush_fee_fixture() -> PaymentFixtureContext {
 
 pub fn malformed_sidecar_hush_fee_fixture() -> PaymentFixtureContext {
     let mut fixture = valid_usdc_hush_fee_fixture();
-    let sidecar =
-        fixture.fee_sidecar_witness.as_mut().expect("valid Mode B fixture should include sidecar");
+    let sidecar = fixture
+        .fee_sidecar_witness
+        .as_mut()
+        .expect("valid HUSH gas fixture should include sidecar");
     sidecar.note_root[0] = sidecar.note_root[0].wrapping_add(1);
     fixture
 }
@@ -259,7 +211,7 @@ pub fn wrong_sender_binding_tag_hush_fee_fixture() -> PaymentFixtureContext {
     fixture
         .fee_sidecar_witness
         .as_mut()
-        .expect("valid Mode B fixture should include sidecar")
+        .expect("valid HUSH gas fixture should include sidecar")
         .sender_binding_tag = bad_tag;
     fixture
 }
@@ -271,15 +223,17 @@ pub fn wrong_tx_binding_hash_hush_fee_fixture() -> PaymentFixtureContext {
     fixture
         .fee_sidecar_witness
         .as_mut()
-        .expect("valid Mode B fixture should include sidecar")
+        .expect("valid HUSH gas fixture should include sidecar")
         .tx_binding_hash = bad_hash;
     fixture
 }
 
 pub fn insufficient_hush_fee_coverage_fixture() -> PaymentFixtureContext {
     let mut fixture = valid_usdc_hush_fee_fixture();
-    let sidecar =
-        fixture.fee_sidecar_witness.as_mut().expect("valid Mode B fixture should include sidecar");
+    let sidecar = fixture
+        .fee_sidecar_witness
+        .as_mut()
+        .expect("valid HUSH gas fixture should include sidecar");
     sidecar.in_amt_0 = 2;
     sidecar.in_amt_1 = 2;
     sidecar.change_amt = 0;
@@ -291,7 +245,7 @@ pub fn invalid_hush_change_fixture() -> PaymentFixtureContext {
     fixture
         .fee_sidecar_witness
         .as_mut()
-        .expect("valid Mode B fixture should include sidecar")
+        .expect("valid HUSH gas fixture should include sidecar")
         .change_amt += 1;
     fixture
 }

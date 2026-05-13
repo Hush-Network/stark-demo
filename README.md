@@ -25,6 +25,8 @@ What remains demo scaffolding in this repo:
 
 Wallet funding, live boundary-issued attestations, and network submission are represented in the demo but not implemented here as production integrations.
 
+Supported browser payment assets are USDC and USDT. HUSH remains only the sidecar fee asset and demo gas reserve; the standalone HUSH-payment route is not part of this repo's current model.
+
 ## Status boundary
 
 **Implemented**
@@ -115,29 +117,27 @@ WASM uses Blake2s for the Merkle commitment backend (no SIMD Poseidon252 in brow
 
 ### Native (single-threaded)
 
-AMD Ryzen 9, release build. 10 iterations per circuit. Refreshed April 17, 2026.
+Local Windows workstation, release build. 10 iterations per circuit. Refreshed May 13, 2026.
 
 | Circuit             | Prove (avg) | Prove (min) | Prove (max) | Verify (avg) |
 |---------------------|-------------|-------------|-------------|--------------|
-| Payment             |    989.56ms |    594.92ms |   1775.58ms |    209.24ms |
-| Mode A Bundle       |    906.53ms |    761.08ms |   1042.06ms |    203.77ms |
-| Mode B Bundle       |   1168.48ms |   1054.78ms |   1289.20ms |    247.88ms |
-| Provenance Attest.  |    166.44ms |    154.22ms |    184.60ms |  (combined) |
-| Time-Window Audit   |    159.21ms |    143.67ms |    179.73ms |  (combined) |
+| Payment             |    628.94ms |    562.06ms |    719.21ms |     73.96ms |
+| Payment Bundle      |   1280.11ms |   1239.38ms |   1343.61ms |    152.75ms |
+| Provenance Attest.  |    269.54ms |    265.77ms |    272.91ms |  (combined) |
+| Time-Window Audit   |    277.51ms |    270.04ms |    286.93ms |  (combined) |
 
 ### Native (parallel, --features parallel)
 
-Same hardware, multi-threaded via rayon. Refreshed April 17, 2026.
+Same workstation, multi-threaded via rayon. Refreshed May 13, 2026.
 
 | Circuit             | Prove (avg) | Prove (min) | Prove (max) | Verify (avg) |
 |---------------------|-------------|-------------|-------------|--------------|
-| Payment             |    639.13ms |    561.35ms |    717.44ms |    127.75ms |
-| Mode A Bundle       |    709.91ms |    616.79ms |    779.50ms |    128.42ms |
-| Mode B Bundle       |   1066.88ms |   1001.91ms |   1109.74ms |    206.40ms |
-| Provenance Attest.  |    153.36ms |    142.47ms |    172.41ms |  (combined) |
-| Time-Window Audit   |    140.57ms |    130.47ms |    158.11ms |  (combined) |
+| Payment             |    341.39ms |    283.66ms |    400.11ms |     74.42ms |
+| Payment Bundle      |    770.31ms |    718.99ms |    818.67ms |    154.26ms |
+| Provenance Attest.  |    152.69ms |    144.40ms |    162.04ms |  (combined) |
+| Time-Window Audit   |    140.38ms |    129.68ms |    157.26ms |  (combined) |
 
-Mode A = same-asset fee. Mode B = HUSH sidecar fee (payment + fee sidecar proofs). Accounting, epoch accrual, and payout generation run in microseconds and are not shown. April 17, 2026.
+Payment Bundle is the current public demo path: stablecoin payment plus HUSH gas sidecar proof. Accounting, epoch accrual, and payout generation run in microseconds and are shown in [benchmarks/](benchmarks/).
 
 Recursive batching is a later proving path within the broader Hush architecture and is not measured here. See [benchmarks/](benchmarks/) for the full breakdown.
 
@@ -178,7 +178,7 @@ src/
   payment_validation.rs     Payment + fee bundle validation
   payment_fixtures.rs       Shared fixtures for tests, lifecycle, and bench
   fee_sidecar.rs            HUSH fee sidecar circuit
-  dual_fee_runtime.rs       Quote/submit runtime for the dual-fee model
+  hush_gas_runtime.rs       Quote/submit runtime for stablecoin payments with HUSH gas
   accounting.rs             Block accounting and validator payout primitives
   measurement.rs            Duration/timing helpers
   types.rs                  Witness types and shared constants

@@ -1,7 +1,7 @@
 pub mod accounting;
 pub mod circuit;
-pub mod dual_fee_runtime;
 pub mod fee_sidecar;
+pub mod hush_gas_runtime;
 pub mod measurement;
 pub mod payment_fixtures;
 pub mod payment_tx;

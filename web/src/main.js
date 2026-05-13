@@ -178,7 +178,7 @@ function balanceUnitsFor(asset) {
 }
 
 function currentFeeAsset() {
-  return state.feeMode === 'hush' ? 'HUSH' : state.activeAsset;
+  return 'HUSH';
 }
 
 function currentBalance() {
@@ -287,7 +287,7 @@ function refreshSendSummary() {
   }
   if (totalEl) totalEl.textContent = currentTotalLabel(quote);
   if (routeEl) {
-    routeEl.textContent = `${state.feeMode === 'hush' ? `${state.activeAsset} -> HUSH` : `${state.activeAsset} -> ${state.activeAsset}`} | ${currentFeeScheduleLabel()}`;
+    routeEl.textContent = `${state.activeAsset} -> HUSH | ${currentFeeScheduleLabel()}`;
   }
 }
 
@@ -295,7 +295,7 @@ function refreshSendSummary() {
 // onclick handlers, preserving all wiring to sendPayment, updateAmount, etc.
 function renderComposerBody() {
   const quote = currentQuote();
-  const routeArrowLabel = state.feeMode === 'hush' ? `${state.activeAsset} -> HUSH` : `${state.activeAsset} -> ${state.activeAsset}`;
+  const routeArrowLabel = `${state.activeAsset} -> HUSH`;
   return `
     <section class="payment-panel" id="composer">
       <div class="payment-grid">
@@ -319,14 +319,6 @@ function renderComposerBody() {
             <div class="asset-tabs">
               <button class="asset-tab ${state.activeAsset === 'USDC' ? 'active' : ''}" onclick="switchAsset('USDC')">USDC</button>
               <button class="asset-tab ${state.activeAsset === 'USDT' ? 'active' : ''}" onclick="switchAsset('USDT')">USDT</button>
-              <button class="asset-tab ${state.activeAsset === 'HUSH' ? 'active' : ''}" onclick="switchAsset('HUSH')">HUSH</button>
-            </div>
-          </div>
-          <div class="field">
-            <label>Fee</label>
-            <div class="asset-tabs composer-route-tabs">
-              <button class="asset-tab ${state.feeMode === 'same_asset' ? 'active' : ''}" onclick="switchFeeMode('same_asset')">Pay in ${state.activeAsset}</button>
-              ${state.activeAsset === 'HUSH' ? '' : `<button class="asset-tab ${state.feeMode === 'hush' ? 'active' : ''}" onclick="switchFeeMode('hush')">Pay in HUSH</button>`}
             </div>
           </div>
         </div>
@@ -448,16 +440,8 @@ function renderTruthOverlayView() {
 }
 
 window.switchAsset = function switchAsset(asset) {
+  if (asset !== 'USDC' && asset !== 'USDT') return;
   state.activeAsset = asset;
-  // HUSH same-asset is the only valid HUSH-payment route; the sidecar mode
-  // would be (Hush, Hush) which is identical, so force same-asset feeMode.
-  if (asset === 'HUSH') state.feeMode = 'same_asset';
-  render();
-};
-
-window.switchFeeMode = function switchFeeMode(mode) {
-  state.feeMode = mode;
-  refreshSendSummary();
   render();
 };
 
@@ -486,7 +470,6 @@ window.setProvenanceStatus = function setProvenanceStatus(status) {
 window.restartDemo = function restartDemo() {
   state.provenanceStatus = 'valid';
   state.activeAsset = 'USDC';
-  state.feeMode = 'same_asset';
   state.currentRecipient = DEMO_DEFAULT_RECIPIENT;
   state.currentAmountInput = DEMO_DEFAULT_AMOUNT;
   state.balancesUnits = { ...DEMO_INITIAL_BALANCES_UNITS };
@@ -560,7 +543,7 @@ async function sendPayment() {
 
   state.isSending = true;
   resetProofScope();
-  pushLog('info', `${quote.route === 'mode_b_hush_sidecar' ? 'HUSH sidecar' : 'Same-asset fee'}: ${fmtFee(quote.fee_amount / AMT_SCALE)} ${currentFeeAsset()}.`);
+  pushLog('info', `HUSH gas: ${fmtFee(quote.fee_amount / AMT_SCALE)} ${currentFeeAsset()}.`);
   render();
 
   await new Promise((resolve) => setTimeout(resolve, 80));
@@ -585,7 +568,7 @@ async function sendPayment() {
 
     const recipientOwner = deriveRecipientOwner(recipient);
 
-    pushLog('info', 'Generating dual fee payment bundle.');
+    pushLog('info', 'Generating payment bundle.');
 
     const response = submitDemoPayment({
       paymentAssetId: assetId(state.activeAsset),
@@ -615,9 +598,7 @@ async function sendPayment() {
     pushLog('success', `Payment bundle accepted. Prove ${paymentProof.prove_time_ms.toFixed(0)}ms, verify ${paymentProof.verify_time_ms.toFixed(0)}ms.`);
     pushLog('success', `Accounting ${accountingStage.duration_ms.toFixed(2)}ms, epoch close ${epochCloseStage.duration_ms.toFixed(2)}ms.`);
     if (result.hush_sidecar) {
-      pushLog('info', 'HUSH sidecar validated.');
-    } else {
-      pushLog('info', 'Same-asset fee path.');
+      pushLog('info', 'HUSH gas proof validated.');
     }
 
     state.timings = {
@@ -642,11 +623,7 @@ async function sendPayment() {
     }
 
     state.lastSubmission = result;
-    if (state.activeAsset === 'HUSH') {
-      state.hushBalanceUnits -= quote.payment_debit;
-    } else {
-      state.balancesUnits[state.activeAsset] -= quote.payment_debit;
-    }
+    state.balancesUnits[state.activeAsset] -= quote.payment_debit;
     if (quote.hush_fee_debit > 0) {
       state.hushBalanceUnits -= quote.hush_fee_debit;
     }

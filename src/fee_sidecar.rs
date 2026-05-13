@@ -799,21 +799,21 @@ mod tests {
     };
 
     #[test]
-    fn test_hush_fee_roundtrip_usdc_mode_b() {
+    fn test_hush_fee_roundtrip_usdc_hush_gas() {
         let fixture = valid_usdc_hush_fee_fixture();
-        let witness = fixture.fee_sidecar_witness.expect("Mode B fixture should include sidecar");
-        let result = prove_hush_fee(&witness).expect("Mode B HUSH sidecar proof should succeed");
-        verify_hush_fee(&result).expect("Mode B HUSH sidecar verification should succeed");
+        let witness = fixture.fee_sidecar_witness.expect("HUSH gas fixture should include sidecar");
+        let result = prove_hush_fee(&witness).expect("HUSH gas proof should succeed");
+        verify_hush_fee(&result).expect("HUSH gas verification should succeed");
         assert_eq!(result.public_data.tx_binding_hash, fixture.tx.tx_binding_hash);
         assert_eq!(result.public_data.sender_binding_tag, fixture.sender_binding_tag);
     }
 
     #[test]
-    fn test_hush_fee_roundtrip_usdt_mode_b() {
+    fn test_hush_fee_roundtrip_usdt_hush_gas() {
         let fixture = valid_usdt_hush_fee_fixture();
-        let witness = fixture.fee_sidecar_witness.expect("Mode B fixture should include sidecar");
-        let result = prove_hush_fee(&witness).expect("Mode B HUSH sidecar proof should succeed");
-        verify_hush_fee(&result).expect("Mode B HUSH sidecar verification should succeed");
+        let witness = fixture.fee_sidecar_witness.expect("HUSH gas fixture should include sidecar");
+        let result = prove_hush_fee(&witness).expect("HUSH gas proof should succeed");
+        verify_hush_fee(&result).expect("HUSH gas verification should succeed");
     }
 
     #[test]

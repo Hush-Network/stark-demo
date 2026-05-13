@@ -10,7 +10,7 @@ This note covers the proving engine used by the Hush browser demo. It does not d
 - `provenance_attestation` - Provenance attestation proof
 - `time_window` - Aggregate audit circuit over a time range, surfaced as audit proofs in the demo
 - `payment_tx` / `payment_validation` / `payment_fixtures` - canonical tx encoding, bundle validation, and shared fixtures
-- `fee_sidecar` / `dual_fee_runtime` - HUSH fee sidecar circuit and dual-fee runtime
+- `fee_sidecar` / `hush_gas_runtime` - HUSH fee sidecar circuit and demo quote/submit runtime
 - `accounting` - Block accounting and validator payout primitives
 - `prover_common` - Shared prover config, channel, and hasher type aliases
 - `types` - Witness structs and shared constants

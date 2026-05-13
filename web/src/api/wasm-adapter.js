@@ -1,6 +1,6 @@
 import init, {
-  dual_fee_quote_payment_with_schedule_json,
-  dual_fee_submit_demo_payment_json,
+  hush_gas_quote_payment_with_schedule_json,
+  hush_gas_submit_demo_payment_json,
   prove_demo_provenance_attestation,
   prove_time_window_audit,
 } from '../../pkg/hush_demo_stark.js';
@@ -15,7 +15,7 @@ export function createDemoAttestationProof(spendingKey, issuerId, expiry, secret
 
 export function quotePayment(paymentAssetId, feeAssetId, amountUnits, feeScheduleVersion) {
   return parseRuntimeResponse(
-    dual_fee_quote_payment_with_schedule_json(
+    hush_gas_quote_payment_with_schedule_json(
       paymentAssetId,
       feeAssetId,
       amountUnits,
@@ -35,7 +35,7 @@ export function submitDemoPayment({
   attestationExpiry,
 }) {
   return parseRuntimeResponse(
-    dual_fee_submit_demo_payment_json(
+    hush_gas_submit_demo_payment_json(
       paymentAssetId,
       feeAssetId,
       amountUnits,

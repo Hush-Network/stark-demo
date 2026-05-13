@@ -418,12 +418,12 @@ if (Symbol.dispose) ProvenanceAttestationOutput.prototype[Symbol.dispose] = Prov
  * @param {number} fee_schedule_version
  * @returns {string}
  */
-export function dual_fee_quote_payment_with_schedule_json(payment_asset, fee_asset, amount, fee_schedule_version) {
+export function hush_gas_quote_payment_with_schedule_json(payment_asset, fee_asset, amount, fee_schedule_version) {
     let deferred1_0;
     let deferred1_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.dual_fee_quote_payment_with_schedule_json(retptr, payment_asset, fee_asset, amount, fee_schedule_version);
+        wasm.hush_gas_quote_payment_with_schedule_json(retptr, payment_asset, fee_asset, amount, fee_schedule_version);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         deferred1_0 = r0;
@@ -446,12 +446,12 @@ export function dual_fee_quote_payment_with_schedule_json(payment_asset, fee_ass
  * @param {number} attestation_expiry
  * @returns {string}
  */
-export function dual_fee_submit_demo_payment_json(payment_asset, fee_asset, amount, fee_schedule_version, recipient_owner, payment_balance, hush_balance, attestation_expiry) {
+export function hush_gas_submit_demo_payment_json(payment_asset, fee_asset, amount, fee_schedule_version, recipient_owner, payment_balance, hush_balance, attestation_expiry) {
     let deferred1_0;
     let deferred1_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.dual_fee_submit_demo_payment_json(retptr, payment_asset, fee_asset, amount, fee_schedule_version, recipient_owner, payment_balance, hush_balance, attestation_expiry);
+        wasm.hush_gas_submit_demo_payment_json(retptr, payment_asset, fee_asset, amount, fee_schedule_version, recipient_owner, payment_balance, hush_balance, attestation_expiry);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         deferred1_0 = r0;

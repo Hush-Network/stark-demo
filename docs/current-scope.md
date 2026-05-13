@@ -11,9 +11,9 @@ What this repository implements today, what is demo scaffolding, and what is int
 - **Payment tx encoding + binding hash** (`src/payment_tx.rs`): canonical encoding of payment + fee descriptors and the binding-hash domain separation used by every transaction proof.
 - **Payment + fee bundle validation** (`src/payment_validation.rs`): validates a (payment, fee sidecar) bundle end to end before submission.
 - **HUSH fee sidecar** (`src/fee_sidecar.rs`): independent proof that pays the protocol fee in HUSH against the same binding hash as the payment.
-- **Dual-fee runtime** (`src/dual_fee_runtime.rs`): quote and submit paths exposed to the browser demo. Mode A is same-asset fee; Mode B is the HUSH sidecar.
-- **Block accounting** (`src/accounting.rs`): protocol-action accounting and validator payout primitives.
-- **Browser WASM bindings** (`src/wasm.rs`): narrow surface used by the live demo. Exports cover proof construction, proof verification, audit-proof construction and verification, the dual-fee quote/submit flow, and a binding-hash recompute helper used by the receipt verifier.
+- **HUSH gas runtime** (`src/hush_gas_runtime.rs`): quote and submit paths exposed to the browser demo. The browser route is stablecoin payment with HUSH gas.
+- **Block accounting** (`src/accounting.rs`): payment-fee accounting and validator payout primitives.
+- **Browser WASM bindings** (`src/wasm.rs`): narrow surface used by the live demo. Exports cover proof construction, proof verification, audit-proof construction and verification, the HUSH gas quote/submit flow, and a binding-hash recompute helper used by the receipt verifier.
 - **Browser demo** (`web/`): wallet shell, payment composer, audit overlay, receipt verifier. Uses Vite for build.
 - **Native benchmarks** (`src/bin/bench.rs`): single-threaded and `--features parallel` paths for all three circuits.
 - **Lifecycle binary** (`src/bin/lifecycle.rs`): end-to-end attestation -> payment -> audit flow over native code.
@@ -26,6 +26,7 @@ These live in the browser demo and the WASM helpers it calls. They are not part 
 - **Hardcoded demo identities** in `web/src/config/demo-fixtures.js`: `DEMO_SPENDING_KEY`, `DEMO_ATTESTATION_ISSUER`, `DEMO_ATTESTATION_EXPIRY`, `DEMO_ATTESTATION_SECRET`, `DEMO_USER_HANDLE`, `DEMO_DEFAULT_RECIPIENT`, `DEMO_DEFAULT_AMOUNT`. These exist so a visitor can produce a real proof without going through wallet onboarding.
 - **Hardcoded starting balances** in `web/src/config/demo-fixtures.js`: `DEMO_INITIAL_BALANCES_UNITS` (USDC, USDT) and `DEMO_INITIAL_HUSH_BALANCE_UNITS`.
 - **Demo HUSH spot price** (`HUSH_USD_PRICE` in `web/src/config/constants.js`): a fixed display rate used to render the balance card. The proving stack does not consume this number.
+- **HUSH gas reserve** in the browser demo: HUSH is displayed and spent only as a sidecar fee asset. USDC and USDT are the supported payment assets in this repo.
 - **Single boundary actor in `prove_demo_provenance_attestation`** (`src/wasm.rs`): builds a one-leaf Merkle tree to keep the demo path small. The circuit constraints are unchanged.
 - **Demo wallet state** in `web/src/state/demo-state.js`: balances, transactions, activity, proof log are kept entirely in memory and reset on reload.
 

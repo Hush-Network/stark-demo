@@ -19,10 +19,6 @@ pub const FEE_AUX_ROUTE_HUSH_SIDECAR: u32 = 1;
 #[repr(u32)]
 pub enum TxKind {
     Payment = 1,
-    ValidatorAction = 2,
-    IssuerAction = 3,
-    ProvenanceStateAction = 4,
-    ProtocolAdminAction = 5,
 }
 
 impl TxKind {
@@ -33,20 +29,12 @@ impl TxKind {
     pub fn try_from_u32(value: u32) -> Result<Self, String> {
         match value {
             1 => Ok(Self::Payment),
-            2 => Ok(Self::ValidatorAction),
-            3 => Ok(Self::IssuerAction),
-            4 => Ok(Self::ProvenanceStateAction),
-            5 => Ok(Self::ProtocolAdminAction),
             _ => Err(format!("unsupported tx_kind {value}")),
         }
     }
 }
 
 pub const TX_KIND_PAYMENT: u32 = TxKind::Payment as u32;
-pub const TX_KIND_VALIDATOR_ACTION: u32 = TxKind::ValidatorAction as u32;
-pub const TX_KIND_ISSUER_ACTION: u32 = TxKind::IssuerAction as u32;
-pub const TX_KIND_PROVENANCE_STATE_ACTION: u32 = TxKind::ProvenanceStateAction as u32;
-pub const TX_KIND_PROTOCOL_ADMIN_ACTION: u32 = TxKind::ProtocolAdminAction as u32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u32)]
@@ -73,20 +61,16 @@ impl AssetId {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaymentRoute {
-    SameAsset,
     HushSidecar,
 }
 
 impl PaymentRoute {
-    pub fn payment_fee_deduction(self, fee_amount: u64) -> u64 {
-        match self {
-            Self::SameAsset => fee_amount,
-            Self::HushSidecar => 0,
-        }
+    pub fn payment_fee_deduction(self, _fee_amount: u64) -> u64 {
+        0
     }
 
     pub fn requires_hush_sidecar(self) -> bool {
-        matches!(self, Self::HushSidecar)
+        true
     }
 }
 
@@ -164,42 +148,6 @@ pub struct HushFeeMerkleContext {
 }
 
 impl PaymentTxV1 {
-    pub fn build_same_asset(
-        payment_asset: AssetId,
-        inputs: [NoteInput; 2],
-        recipient: RecipientIntent,
-        sender_change_randomness: u32,
-        sk: u32,
-    ) -> Result<Self, String> {
-        Self::build_same_asset_with_schedule(
-            payment_asset,
-            inputs,
-            recipient,
-            sender_change_randomness,
-            sk,
-            PAYMENT_FEE_SCHEDULE_STANDARD,
-        )
-    }
-
-    pub fn build_same_asset_with_schedule(
-        payment_asset: AssetId,
-        inputs: [NoteInput; 2],
-        recipient: RecipientIntent,
-        sender_change_randomness: u32,
-        sk: u32,
-        fee_schedule_version: u32,
-    ) -> Result<Self, String> {
-        Self::build_for_route(
-            PaymentRoute::SameAsset,
-            payment_asset,
-            inputs,
-            recipient,
-            sender_change_randomness,
-            sk,
-            fee_schedule_version,
-        )
-    }
-
     pub fn build_with_hush_fee(
         payment_asset: AssetId,
         inputs: [NoteInput; 2],
@@ -246,7 +194,6 @@ impl PaymentTxV1 {
         fee_schedule_version: u32,
     ) -> Result<Self, String> {
         let fee_asset = match route {
-            PaymentRoute::SameAsset => payment_asset,
             PaymentRoute::HushSidecar => AssetId::Hush,
         };
         let fee_amount =
@@ -365,7 +312,7 @@ impl PaymentTxV1 {
         let route = validate_payment_tx(self)?;
         if route != PaymentRoute::HushSidecar {
             return Err(
-                "HUSH fee sidecar witness is only valid for Mode B transactions".to_string()
+                "HUSH fee sidecar witness is only valid for HUSH gas transactions".to_string()
             );
         }
 
@@ -413,17 +360,17 @@ pub fn payment_route(payment_asset: u32, fee_asset: u32) -> Result<PaymentRoute,
     let payment_asset = AssetId::try_from_u32(payment_asset)?;
     let fee_asset = AssetId::try_from_u32(fee_asset)?;
     match (payment_asset, fee_asset) {
-        (AssetId::Usdc, AssetId::Usdc)
-        | (AssetId::Usdt, AssetId::Usdt)
-        | (AssetId::Hush, AssetId::Hush) => Ok(PaymentRoute::SameAsset),
         (AssetId::Usdc, AssetId::Hush) | (AssetId::Usdt, AssetId::Hush) => {
             Ok(PaymentRoute::HushSidecar)
         }
-        (AssetId::Usdc, AssetId::Usdt)
+        (AssetId::Usdc, AssetId::Usdc)
+        | (AssetId::Usdt, AssetId::Usdt)
+        | (AssetId::Usdc, AssetId::Usdt)
         | (AssetId::Usdt, AssetId::Usdc)
+        | (AssetId::Hush, AssetId::Hush)
         | (AssetId::Hush, AssetId::Usdc)
         | (AssetId::Hush, AssetId::Usdt) => Err(format!(
-            "cross-asset fee mismatch is invalid: payment asset {} with fee asset {}",
+            "unsupported payment fee route: payment asset {} with fee asset {}",
             payment_asset.as_u32(),
             fee_asset.as_u32()
         )),
@@ -443,30 +390,7 @@ pub fn validate_tx_kind_fee_asset_policy(
                 .ok_or_else(|| "payment tx_kind requires payment_asset".to_string())?;
             payment_route(payment_asset, fee_asset.as_u32()).map(|_| ())
         }
-        TxKind::ValidatorAction
-        | TxKind::IssuerAction
-        | TxKind::ProvenanceStateAction
-        | TxKind::ProtocolAdminAction => {
-            if fee_asset != AssetId::Hush {
-                return Err(format!(
-                    "tx_kind {} is HUSH-only and rejects fee asset {}",
-                    tx_kind.as_u32(),
-                    fee_asset.as_u32()
-                ));
-            }
-            Ok(())
-        }
     }
-}
-
-pub fn is_hush_only_action(tx_kind: u32) -> Result<bool, String> {
-    Ok(matches!(
-        TxKind::try_from_u32(tx_kind)?,
-        TxKind::ValidatorAction
-            | TxKind::IssuerAction
-            | TxKind::ProvenanceStateAction
-            | TxKind::ProtocolAdminAction
-    ))
 }
 
 pub fn expected_fee_amount(
@@ -477,9 +401,6 @@ pub fn expected_fee_amount(
     validate_tx_kind_fee_asset_policy(TX_KIND_PAYMENT, Some(payment_asset), fee_asset)?;
     let route = payment_route(payment_asset, fee_asset)?;
     match (route, fee_schedule_version) {
-        (PaymentRoute::SameAsset, PAYMENT_FEE_SCHEDULE_STANDARD) => Ok(50),
-        (PaymentRoute::SameAsset, PAYMENT_FEE_SCHEDULE_BUSY) => Ok(125),
-        (PaymentRoute::SameAsset, PAYMENT_FEE_SCHEDULE_PEAK) => Ok(300),
         (PaymentRoute::HushSidecar, PAYMENT_FEE_SCHEDULE_STANDARD) => Ok(50),
         (PaymentRoute::HushSidecar, PAYMENT_FEE_SCHEDULE_BUSY) => Ok(125),
         (PaymentRoute::HushSidecar, PAYMENT_FEE_SCHEDULE_PEAK) => Ok(300),
@@ -488,7 +409,7 @@ pub fn expected_fee_amount(
 }
 
 pub fn compute_tx_binding_hash(tx: &PaymentTxV1) -> [u32; 4] {
-    compute_mode_a_tx_binding_hash(
+    compute_payment_tx_binding_hash(
         tx.descriptor.replay_domain,
         tx.descriptor.payment_asset,
         tx.descriptor.fee_asset,
@@ -511,7 +432,7 @@ fn amount_to_m31_pair(amount: u64) -> (M31, M31) {
     (M31::from(lo), M31::from(hi))
 }
 
-pub fn compute_mode_a_tx_binding_hash(
+pub fn compute_payment_tx_binding_hash(
     replay_domain: u32,
     payment_asset: u32,
     fee_asset: u32,
@@ -616,18 +537,14 @@ pub fn validate_payment_tx(tx: &PaymentTxV1) -> Result<PaymentRoute, String> {
         ));
     }
 
-    match (&tx.attachment.fee_aux, route) {
-        (None, PaymentRoute::SameAsset) => {}
-        (Some(fee_aux), PaymentRoute::HushSidecar) => {
+    match &tx.attachment.fee_aux {
+        Some(fee_aux) => {
             if fee_aux.route != FEE_AUX_ROUTE_HUSH_SIDECAR {
                 return Err(format!("unsupported fee aux proof route {}", fee_aux.route));
             }
         }
-        (None, PaymentRoute::HushSidecar) => {
+        None => {
             return Err("missing HUSH sidecar attachment for fee_asset = HUSH".to_string());
-        }
-        (Some(_), PaymentRoute::SameAsset) => {
-            return Err("fee sidecar attachment is disallowed for same-asset Mode A".to_string());
         }
     }
 
@@ -658,20 +575,6 @@ pub fn validate_payment_tx(tx: &PaymentTxV1) -> Result<PaymentRoute, String> {
 mod tests {
     use super::*;
 
-    fn sample_same_asset_tx(asset: AssetId) -> PaymentTxV1 {
-        PaymentTxV1::build_same_asset(
-            asset,
-            [
-                NoteInput { amount: 7_000, randomness: 111 },
-                NoteInput { amount: 3_000, randomness: 222 },
-            ],
-            RecipientIntent { amount: 8_000, owner: [99_999, 0, 0, 0], randomness: 333 },
-            444,
-            12_345,
-        )
-        .expect("sample tx should build")
-    }
-
     fn sample_hush_fee_tx(asset: AssetId) -> PaymentTxV1 {
         PaymentTxV1::build_with_hush_fee(
             asset,
@@ -687,18 +590,6 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_output_is_canonical_same_asset() {
-        let tx = sample_same_asset_tx(AssetId::Usdc);
-        assert_eq!(tx.descriptor.payment_asset, AssetId::Usdc as u32);
-        assert_eq!(tx.descriptor.fee_asset, AssetId::Usdc as u32);
-        assert_eq!(tx.descriptor.fee_amount, 50);
-        assert_eq!(tx.descriptor.fee_schedule_version, PAYMENT_FEE_SCHEDULE_STANDARD);
-        assert_eq!(tx.sender_change.amount, 1_950);
-        assert!(tx.attachment.fee_aux.is_none());
-        validate_payment_tx(&tx).expect("builder output should validate");
-    }
-
-    #[test]
     fn test_builder_output_is_canonical_hush_sidecar() {
         let tx = sample_hush_fee_tx(AssetId::Usdc);
         assert_eq!(tx.descriptor.payment_asset, AssetId::Usdc as u32);
@@ -708,19 +599,19 @@ mod tests {
             tx.attachment.fee_aux.as_ref().map(|fee_aux| fee_aux.route),
             Some(FEE_AUX_ROUTE_HUSH_SIDECAR)
         );
-        validate_payment_tx(&tx).expect("Mode B builder output should validate");
+        validate_payment_tx(&tx).expect("HUSH gas builder output should validate");
     }
 
     #[test]
     fn test_tx_binding_hash_is_deterministic() {
-        let tx_a = sample_same_asset_tx(AssetId::Usdc);
-        let tx_b = sample_same_asset_tx(AssetId::Usdc);
+        let tx_a = sample_hush_fee_tx(AssetId::Usdc);
+        let tx_b = sample_hush_fee_tx(AssetId::Usdc);
         assert_eq!(tx_a.tx_binding_hash, tx_b.tx_binding_hash);
     }
 
     #[test]
     fn test_sender_binding_tag_is_deterministic() {
-        let tx = sample_same_asset_tx(AssetId::Usdc);
+        let tx = sample_hush_fee_tx(AssetId::Usdc);
         assert_eq!(
             derive_sender_binding_tag(12_345, tx.tx_binding_hash),
             derive_sender_binding_tag(12_345, tx.tx_binding_hash)
@@ -738,7 +629,7 @@ mod tests {
 
     #[test]
     fn test_cross_stable_fee_mismatch_rejected() {
-        let mut tx = sample_same_asset_tx(AssetId::Usdc);
+        let mut tx = sample_hush_fee_tx(AssetId::Usdc);
         tx.descriptor.fee_asset = AssetId::Usdt as u32;
         assert!(validate_payment_tx(&tx).is_err());
     }
@@ -752,14 +643,14 @@ mod tests {
 
     #[test]
     fn test_wrong_replay_domain_rejected() {
-        let mut tx = sample_same_asset_tx(AssetId::Usdc);
+        let mut tx = sample_hush_fee_tx(AssetId::Usdc);
         tx.descriptor.replay_domain = PAYMENT_TX_V1_REPLAY_DOMAIN + 1;
         assert!(validate_payment_tx(&tx).is_err());
     }
 
     #[test]
     fn test_malformed_fee_descriptor_rejected() {
-        let mut tx = sample_same_asset_tx(AssetId::Usdc);
+        let mut tx = sample_hush_fee_tx(AssetId::Usdc);
         tx.descriptor.fee_class = 99;
         assert!(validate_payment_tx(&tx).is_err());
     }
@@ -772,13 +663,6 @@ mod tests {
     }
 
     #[test]
-    fn test_sidecar_rejected_when_disallowed() {
-        let mut tx = sample_same_asset_tx(AssetId::Usdt);
-        tx.attachment.fee_aux = Some(FeeAuxProofDescriptor { route: FEE_AUX_ROUTE_HUSH_SIDECAR });
-        assert!(validate_payment_tx(&tx).is_err());
-    }
-
-    #[test]
     fn test_fee_amount_mismatch_rejected() {
         let mut tx = sample_hush_fee_tx(AssetId::Usdt);
         tx.descriptor.fee_amount += 1;
@@ -786,25 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hush_only_action_fee_policy() {
-        validate_tx_kind_fee_asset_policy(TX_KIND_VALIDATOR_ACTION, None, AssetId::Hush as u32)
-            .expect("validator action should accept HUSH");
-        assert!(validate_tx_kind_fee_asset_policy(
-            TX_KIND_VALIDATOR_ACTION,
-            None,
-            AssetId::Usdc as u32,
-        )
-        .is_err());
-    }
-
-    #[test]
     fn test_payment_fee_policy_mapping() {
-        validate_tx_kind_fee_asset_policy(
-            TX_KIND_PAYMENT,
-            Some(AssetId::Usdc as u32),
-            AssetId::Usdc as u32,
-        )
-        .expect("USDC same-asset path should be allowed");
         validate_tx_kind_fee_asset_policy(
             TX_KIND_PAYMENT,
             Some(AssetId::Usdt as u32),
@@ -813,8 +679,14 @@ mod tests {
         .expect("USDT HUSH sidecar path should be allowed");
         assert!(validate_tx_kind_fee_asset_policy(
             TX_KIND_PAYMENT,
-            Some(AssetId::Usdt as u32),
+            Some(AssetId::Usdc as u32),
             AssetId::Usdc as u32,
+        )
+        .is_err());
+        assert!(validate_tx_kind_fee_asset_policy(
+            TX_KIND_PAYMENT,
+            Some(AssetId::Hush as u32),
+            AssetId::Hush as u32,
         )
         .is_err());
     }

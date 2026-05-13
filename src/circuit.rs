@@ -28,7 +28,7 @@ use stwo_constraint_framework::{
 };
 
 use crate::{
-    payment_tx::{compute_mode_a_tx_binding_hash, derive_sender_binding_tag},
+    payment_tx::{compute_payment_tx_binding_hash, derive_sender_binding_tag},
     poseidon2, poseidon2_air,
     prover_common::{pcs_config, ProverChannel, ProverMerkleChannel, ProverMerkleHasher},
     types::{
@@ -938,7 +938,7 @@ pub fn prove_payment(witness: &PaymentWitness) -> Result<ProofResult, String> {
         return Err("Note Merkle path for input 1 is invalid".to_string());
     }
 
-    let expected_binding_hash = compute_mode_a_tx_binding_hash(
+    let expected_binding_hash = compute_payment_tx_binding_hash(
         witness.replay_domain,
         witness.in_asset,
         witness.binding_fee_asset,
@@ -1108,7 +1108,7 @@ fn validate_witness(witness: &PaymentWitness) -> Result<PaymentPublicData, Strin
         return Err("Note Merkle path for input 1 is invalid".to_string());
     }
 
-    let expected_binding_hash = compute_mode_a_tx_binding_hash(
+    let expected_binding_hash = compute_payment_tx_binding_hash(
         witness.replay_domain,
         witness.in_asset,
         witness.binding_fee_asset,
@@ -1266,7 +1266,7 @@ pub fn verify_payment_batch(result: &BatchProofResult) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::{
-        payment_fixtures::{valid_usdc_same_asset_fixture, valid_usdt_same_asset_fixture},
+        payment_fixtures::{valid_usdc_hush_fee_fixture, valid_usdt_hush_fee_fixture},
         payment_tx::{
             validate_payment_tx, AssetId, NoteInput, PaymentTxV1, RecipientIntent,
             PAYMENT_TX_V1_REPLAY_DOMAIN,
@@ -1274,7 +1274,7 @@ mod tests {
     };
 
     fn valid_witness() -> PaymentWitness {
-        valid_usdc_same_asset_fixture().witness
+        valid_usdc_hush_fee_fixture().witness
     }
 
     #[test]
@@ -1293,10 +1293,10 @@ mod tests {
     }
 
     #[test]
-    fn test_payment_roundtrip_usdt_same_asset() {
-        let witness = valid_usdt_same_asset_fixture().witness;
-        let result = prove_payment(&witness).expect("USDT same-asset proof should succeed");
-        verify_payment(&result).expect("USDT same-asset verification should succeed");
+    fn test_payment_roundtrip_usdt_hush_gas() {
+        let witness = valid_usdt_hush_fee_fixture().witness;
+        let result = prove_payment(&witness).expect("USDT HUSH gas proof should succeed");
+        verify_payment(&result).expect("USDT HUSH gas verification should succeed");
         assert_eq!(result.public_data.tx_binding_hash, witness.tx_binding_hash);
     }
 
@@ -1350,7 +1350,7 @@ mod tests {
 
     #[test]
     fn test_receiver_full_amount_and_sender_change_preserved() {
-        let fixture = valid_usdc_same_asset_fixture();
+        let fixture = valid_usdc_hush_fee_fixture();
         assert_eq!(fixture.witness.out_amt_0, fixture.tx.recipient.amount);
         assert_eq!(fixture.witness.out_amt_1, fixture.tx.sender_change.amount);
         assert_eq!(
@@ -1369,7 +1369,7 @@ mod tests {
         rand_1: u32,
         out_split: u32,
     ) -> PaymentWitness {
-        let tx = PaymentTxV1::build_same_asset(
+        let tx = PaymentTxV1::build_with_hush_fee(
             AssetId::Usdc,
             [
                 NoteInput { amount: u64::from(amt_0), randomness: rand_0 },
@@ -1436,7 +1436,7 @@ mod tests {
             out_rand_0: tx.recipient.randomness,
             out_amt_1: tx.sender_change.amount,
             out_rand_1: tx.sender_change.randomness,
-            payment_fee_amount: tx.descriptor.fee_amount,
+            payment_fee_amount: 0,
             binding_fee_asset: tx.descriptor.fee_asset,
             fee_amount: tx.descriptor.fee_amount,
             fee_class: tx.descriptor.fee_class,
@@ -1498,7 +1498,7 @@ mod tests {
 
     #[test]
     fn test_zero_value_transfer() {
-        // Inputs must cover the fee (50) even when recipient amount is zero.
+        // HUSH gas is paid by the sidecar, so the payment note can transfer zero.
         let w = make_witness(42, 50, 0, 10, 20, 0);
         let result = prove_payment(&w).expect("zero-value transfer should prove");
         verify_payment(&result).expect("zero-value transfer should verify");

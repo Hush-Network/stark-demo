@@ -50,9 +50,9 @@ export class ProvenanceAttestationOutput {
     readonly success: boolean;
 }
 
-export function dual_fee_quote_payment_with_schedule_json(payment_asset: number, fee_asset: number, amount: number, fee_schedule_version: number): string;
+export function hush_gas_quote_payment_with_schedule_json(payment_asset: number, fee_asset: number, amount: number, fee_schedule_version: number): string;
 
-export function dual_fee_submit_demo_payment_json(payment_asset: number, fee_asset: number, amount: number, fee_schedule_version: number, recipient_owner: number, payment_balance: number, hush_balance: number, attestation_expiry: number): string;
+export function hush_gas_submit_demo_payment_json(payment_asset: number, fee_asset: number, amount: number, fee_schedule_version: number, recipient_owner: number, payment_balance: number, hush_balance: number, attestation_expiry: number): string;
 
 export function prove_demo_provenance_attestation(sk: number, issuer_key: number, expiry: number, secret: number): ProvenanceAttestationOutput;
 
@@ -108,8 +108,8 @@ export interface InitOutput {
     readonly proofoutput_epoch: (a: number) => number;
     readonly proofoutput_log_num_rows: (a: number) => number;
     readonly recompute_tx_binding_hash_json: (a: number, b: number, c: number) => void;
-    readonly dual_fee_quote_payment_with_schedule_json: (a: number, b: number, c: number, d: number, e: number) => void;
-    readonly dual_fee_submit_demo_payment_json: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly hush_gas_quote_payment_with_schedule_json: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly hush_gas_submit_demo_payment_json: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly __wbg_auditoutput_free: (a: number, b: number) => void;
     readonly auditoutput_success: (a: number) => number;
     readonly auditoutput_message: (a: number, b: number) => void;

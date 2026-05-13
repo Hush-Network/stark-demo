@@ -17,12 +17,8 @@ pub fn prove_payment_bundle(
     let route = validate_payment_tx(tx)?;
     let payment = circuit::prove_payment(payment_witness)?;
     let fee_sidecar = match (route, fee_sidecar_witness) {
-        (PaymentRoute::SameAsset, None) => None,
-        (PaymentRoute::SameAsset, Some(_)) => {
-            return Err("sidecar witness is disallowed for same-asset Mode A".to_string());
-        }
         (PaymentRoute::HushSidecar, None) => {
-            return Err("missing HUSH sidecar witness for Mode B".to_string());
+            return Err("missing HUSH sidecar witness for HUSH gas transaction".to_string());
         }
         (PaymentRoute::HushSidecar, Some(witness)) => Some(fee_sidecar::prove_hush_fee(witness)?),
     };
@@ -53,12 +49,8 @@ pub fn validate_payment_bundle(
     }
 
     match (route, &bundle.fee_sidecar) {
-        (PaymentRoute::SameAsset, None) => Ok(()),
-        (PaymentRoute::SameAsset, Some(_)) => {
-            Err("sidecar proof is disallowed for same-asset Mode A".to_string())
-        }
         (PaymentRoute::HushSidecar, None) => {
-            Err("missing HUSH sidecar proof for Mode B".to_string())
+            Err("missing HUSH sidecar proof for HUSH gas transaction".to_string())
         }
         (PaymentRoute::HushSidecar, Some(sidecar)) => {
             fee_sidecar::verify_hush_fee(sidecar)?;
@@ -103,22 +95,13 @@ mod tests {
     use crate::{
         payment_fixtures::{
             malformed_sidecar_hush_fee_fixture, missing_sidecar_hush_fee_fixture,
-            valid_usdc_hush_fee_fixture, valid_usdc_same_asset_fixture,
-            valid_usdt_hush_fee_fixture, valid_usdt_same_asset_fixture,
+            valid_usdc_hush_fee_fixture, valid_usdt_hush_fee_fixture,
         },
         payment_tx::{AssetId, FeeAuxProofDescriptor},
     };
 
     #[test]
-    fn test_all_four_valid_combinations_accepted() {
-        let usdc_same = valid_usdc_same_asset_fixture();
-        prove_payment_bundle(&usdc_same.tx, &usdc_same.witness, None)
-            .expect("USDC payment with USDC fee should validate");
-
-        let usdt_same = valid_usdt_same_asset_fixture();
-        prove_payment_bundle(&usdt_same.tx, &usdt_same.witness, None)
-            .expect("USDT payment with USDT fee should validate");
-
+    fn test_stablecoin_payment_with_hush_gas_accepted() {
         let usdc_hush = valid_usdc_hush_fee_fixture();
         prove_payment_bundle(
             &usdc_hush.tx,
@@ -140,25 +123,10 @@ mod tests {
     fn test_missing_sidecar_rejected_when_required() {
         let fixture = missing_sidecar_hush_fee_fixture();
         let err = match prove_payment_bundle(&fixture.tx, &fixture.witness, None) {
-            Ok(_) => panic!("Mode B bundle should reject missing sidecar"),
+            Ok(_) => panic!("HUSH gas bundle should reject missing sidecar"),
             Err(err) => err,
         };
         assert!(err.contains("missing HUSH sidecar"));
-    }
-
-    #[test]
-    fn test_sidecar_rejected_when_disallowed() {
-        let same_asset = valid_usdc_same_asset_fixture();
-        let sidecar = valid_usdc_hush_fee_fixture();
-        let err = match prove_payment_bundle(
-            &same_asset.tx,
-            &same_asset.witness,
-            sidecar.fee_sidecar_witness.as_ref(),
-        ) {
-            Ok(_) => panic!("Mode A bundle should reject sidecar proof"),
-            Err(err) => err,
-        };
-        assert!(err.contains("sidecar"));
     }
 
     #[test]
@@ -169,7 +137,10 @@ mod tests {
         let payment =
             circuit::prove_payment(&usdc_hush.witness).expect("payment proof should succeed");
         let sidecar = fee_sidecar::prove_hush_fee(
-            usdt_hush.fee_sidecar_witness.as_ref().expect("Mode B fixture should include sidecar"),
+            usdt_hush
+                .fee_sidecar_witness
+                .as_ref()
+                .expect("HUSH gas fixture should include sidecar"),
         )
         .expect("sidecar proof should succeed");
 
@@ -185,20 +156,28 @@ mod tests {
 
     #[test]
     fn test_cross_stablecoin_mismatch_rejected() {
-        let mut fixture = valid_usdc_same_asset_fixture();
+        let mut fixture = valid_usdc_hush_fee_fixture();
         fixture.tx.descriptor.fee_asset = AssetId::Usdt as u32;
-        let err = match prove_payment_bundle(&fixture.tx, &fixture.witness, None) {
+        let err = match prove_payment_bundle(
+            &fixture.tx,
+            &fixture.witness,
+            fixture.fee_sidecar_witness.as_ref(),
+        ) {
             Ok(_) => panic!("cross-asset mismatch should be rejected"),
             Err(err) => err,
         };
-        assert!(err.contains("cross-asset"));
+        assert!(err.contains("unsupported payment fee route"));
     }
 
     #[test]
     fn test_malformed_fee_descriptor_rejected() {
-        let mut fixture = valid_usdc_same_asset_fixture();
+        let mut fixture = valid_usdc_hush_fee_fixture();
         fixture.tx.descriptor.fee_class = 99;
-        let err = match prove_payment_bundle(&fixture.tx, &fixture.witness, None) {
+        let err = match prove_payment_bundle(
+            &fixture.tx,
+            &fixture.witness,
+            fixture.fee_sidecar_witness.as_ref(),
+        ) {
             Ok(_) => panic!("malformed descriptor should be rejected"),
             Err(err) => err,
         };

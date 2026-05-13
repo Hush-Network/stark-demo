@@ -41,11 +41,11 @@ pub struct ReviewItem {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DualFeeReviewSnapshot {
+pub struct RuntimeReviewSnapshot {
     pub items: Vec<ReviewItem>,
 }
 
-impl DualFeeReviewSnapshot {
+impl RuntimeReviewSnapshot {
     pub fn item(&self, key: &str) -> Option<&ReviewItem> {
         self.items.iter().find(|item| item.key == key)
     }
@@ -149,29 +149,22 @@ struct PreparedWalletSubmission {
     fee_sidecar_witness: Option<crate::types::HushFeeWitness>,
 }
 
-pub fn dual_fee_review_snapshot() -> DualFeeReviewSnapshot {
-    DualFeeReviewSnapshot {
+pub fn runtime_review_snapshot() -> RuntimeReviewSnapshot {
+    RuntimeReviewSnapshot {
         items: vec![
             ReviewItem {
                 group: "supported".to_string(),
-                key: "payment_route_same_asset".to_string(),
-                label: "Same-asset payment fee route".to_string(),
+                key: "payment_route_hush_gas".to_string(),
+                label: "HUSH gas fee route".to_string(),
                 level: ImplementationLevel::Supported,
-                detail: "USDC->USDC and USDT->USDT use canonical PaymentTxV1 building, proof generation, validation, and accounting.".to_string(),
-            },
-            ReviewItem {
-                group: "supported".to_string(),
-                key: "payment_route_hush_sidecar".to_string(),
-                label: "HUSH sidecar fee route".to_string(),
-                level: ImplementationLevel::Supported,
-                detail: "USDC->HUSH and USDT->HUSH use the narrow sidecar proof path with tx_binding_hash and sender_binding_tag enforcement.".to_string(),
+                detail: "USDC->HUSH and USDT->HUSH use the sidecar proof path with tx_binding_hash and sender_binding_tag enforcement.".to_string(),
             },
             ReviewItem {
                 group: "supported".to_string(),
                 key: "fee_quote_and_builder".to_string(),
                 label: "Wallet quote and builder path".to_string(),
                 level: ImplementationLevel::Supported,
-                detail: "The aligned runtime quotes only the four valid combinations and always builds the canonical unsigned PaymentTxV1.".to_string(),
+                detail: "The runtime quotes stablecoin payments with HUSH gas and always builds the canonical unsigned PaymentTxV1.".to_string(),
             },
             ReviewItem {
                 group: "supported".to_string(),
@@ -213,7 +206,7 @@ pub fn dual_fee_review_snapshot() -> DualFeeReviewSnapshot {
                 key: "live_network_submission".to_string(),
                 label: "Live validator network path".to_string(),
                 level: ImplementationLevel::NotImplemented,
-                detail: "The demo executes locally and does not yet submit dual-fee transactions into a live validator network or finality path.".to_string(),
+                detail: "The demo executes locally and does not yet submit transactions into a live validator network or finality path.".to_string(),
             },
         ],
     }
@@ -230,11 +223,8 @@ pub fn quote_payment(request: &WalletQuoteRequest) -> Result<PaymentQuote, Strin
         request.fee_asset,
         request.fee_schedule_version,
     )?;
-    let payment_debit = request
-        .amount
-        .checked_add(route.payment_fee_deduction(fee_amount))
-        .ok_or_else(|| "payment debit overflow".to_string())?;
-    let hush_fee_debit = if route == PaymentRoute::HushSidecar { fee_amount } else { 0 };
+    let payment_debit = request.amount;
+    let hush_fee_debit = fee_amount;
 
     Ok(PaymentQuote {
         payment_asset: request.payment_asset,
@@ -332,7 +322,7 @@ fn prepare_wallet_submission(
         ));
     }
 
-    let route = payment_route(request.payment_asset, request.fee_asset)?;
+    payment_route(request.payment_asset, request.fee_asset)?;
     let payment_inputs = split_demo_notes(request.payment_balance, 111, 222)?;
     let recipient_randomness =
         request.recipient_owner.wrapping_mul(31).wrapping_add(request.amount as u32);
@@ -341,38 +331,24 @@ fn prepare_wallet_submission(
     let recipient_owner_hash = crate::poseidon2::hashout_to_u32_array(
         crate::poseidon2::derive_owner(stwo::core::fields::m31::M31::from(request.recipient_owner)),
     );
-    let tx = match route {
-        PaymentRoute::SameAsset => PaymentTxV1::build_same_asset_with_schedule(
-            payment_asset,
-            payment_inputs.clone(),
-            RecipientIntent {
-                amount: request.amount,
-                owner: recipient_owner_hash,
-                randomness: recipient_randomness,
-            },
-            sender_change_randomness,
-            DEMO_SENDER_KEY,
-            request.fee_schedule_version,
-        )?,
-        PaymentRoute::HushSidecar => PaymentTxV1::build_with_hush_fee_with_schedule(
-            payment_asset,
-            payment_inputs.clone(),
-            RecipientIntent {
-                amount: request.amount,
-                owner: recipient_owner_hash,
-                randomness: recipient_randomness,
-            },
-            sender_change_randomness,
-            DEMO_SENDER_KEY,
-            request.fee_schedule_version,
-        )?,
-    };
+    let tx = PaymentTxV1::build_with_hush_fee_with_schedule(
+        payment_asset,
+        payment_inputs.clone(),
+        RecipientIntent {
+            amount: request.amount,
+            owner: recipient_owner_hash,
+            randomness: recipient_randomness,
+        },
+        sender_change_randomness,
+        DEMO_SENDER_KEY,
+        request.fee_schedule_version,
+    )?;
 
     let payment_context =
         build_payment_merkle_context(DEMO_SENDER_KEY, payment_inputs, payment_asset, DEMO_EPOCH);
     let payment_witness = tx.build_witness(DEMO_SENDER_KEY, &payment_context)?;
 
-    let fee_sidecar_witness = if route == PaymentRoute::HushSidecar {
+    let fee_sidecar_witness = {
         let hush_inputs = split_demo_notes(request.hush_balance, 515, 616)?;
         let hush_context = build_hush_fee_merkle_context(DEMO_SENDER_KEY, hush_inputs.clone());
         let hush_change = SenderChangeIntent {
@@ -383,8 +359,6 @@ fn prepare_wallet_submission(
             randomness: (request.hush_balance as u32).wrapping_mul(19).wrapping_add(717),
         };
         Some(tx.build_hush_fee_witness(DEMO_SENDER_KEY, hush_inputs, hush_change, &hush_context)?)
-    } else {
-        None
     };
 
     Ok(PreparedWalletSubmission { quote, tx, payment_witness, fee_sidecar_witness })
@@ -406,11 +380,8 @@ fn split_demo_notes(total: u64, rand_0: u32, rand_1: u32) -> Result<[NoteInput; 
     ])
 }
 
-fn route_label(route: PaymentRoute) -> String {
-    match route {
-        PaymentRoute::SameAsset => "mode_a_same_asset".to_string(),
-        PaymentRoute::HushSidecar => "mode_b_hush_sidecar".to_string(),
-    }
+fn route_label(_route: PaymentRoute) -> String {
+    "hush_gas".to_string()
 }
 
 fn payment_proof_view(
@@ -517,7 +488,7 @@ mod tests {
         AssetId, PaymentTxV1, PAYMENT_FEE_SCHEDULE_BUSY, PAYMENT_FEE_SCHEDULE_STANDARD,
     };
 
-    fn sample_mode_a_request() -> WalletSubmissionRequest {
+    fn sample_stablecoin_fee_request() -> WalletSubmissionRequest {
         WalletSubmissionRequest {
             payment_asset: AssetId::Usdc as u32,
             fee_asset: AssetId::Usdc as u32,
@@ -530,7 +501,7 @@ mod tests {
         }
     }
 
-    fn sample_mode_b_request() -> WalletSubmissionRequest {
+    fn sample_hush_gas_request() -> WalletSubmissionRequest {
         WalletSubmissionRequest {
             payment_asset: AssetId::Usdt as u32,
             fee_asset: AssetId::Hush as u32,
@@ -544,44 +515,21 @@ mod tests {
     }
 
     #[test]
-    fn test_supported_route_quote_and_builder_alignment_same_asset() {
-        let request = sample_mode_a_request();
-        let quote = quote_payment(&WalletQuoteRequest {
+    fn test_stablecoin_fee_quote_rejected_in_demo_runtime() {
+        let request = sample_stablecoin_fee_request();
+        let err = quote_payment(&WalletQuoteRequest {
             payment_asset: request.payment_asset,
             fee_asset: request.fee_asset,
             amount: request.amount,
             fee_schedule_version: request.fee_schedule_version,
         })
-        .expect("same-asset quote should succeed");
-        assert_eq!(quote.route, "mode_a_same_asset");
-        assert_eq!(quote.payment_debit, 8_050);
-        assert_eq!(quote.hush_fee_debit, 0);
-
-        let prepared = prepare_wallet_submission(&request).expect("submission should prepare");
-        let expected = PaymentTxV1::build_same_asset_with_schedule(
-            AssetId::Usdc,
-            split_demo_notes(request.payment_balance, 111, 222).expect("split"),
-            RecipientIntent {
-                amount: request.amount,
-                owner: crate::poseidon2::hashout_to_u32_array(crate::poseidon2::derive_owner(
-                    stwo::core::fields::m31::M31::from(request.recipient_owner),
-                )),
-                randomness: request
-                    .recipient_owner
-                    .wrapping_mul(31)
-                    .wrapping_add(request.amount as u32),
-            },
-            (request.payment_balance as u32).wrapping_mul(17).wrapping_add(444),
-            DEMO_SENDER_KEY,
-            request.fee_schedule_version,
-        )
-        .expect("expected tx should build");
-        assert_eq!(prepared.tx, expected);
+        .expect_err("stablecoin fee route should not be a demo runtime route");
+        assert!(err.contains("unsupported payment fee route"));
     }
 
     #[test]
     fn test_supported_route_quote_and_builder_alignment_hush_sidecar() {
-        let request = sample_mode_b_request();
+        let request = sample_hush_gas_request();
         let quote = quote_payment(&WalletQuoteRequest {
             payment_asset: request.payment_asset,
             fee_asset: request.fee_asset,
@@ -589,7 +537,7 @@ mod tests {
             fee_schedule_version: request.fee_schedule_version,
         })
         .expect("HUSH sidecar quote should succeed");
-        assert_eq!(quote.route, "mode_b_hush_sidecar");
+        assert_eq!(quote.route, "hush_gas");
         assert_eq!(quote.payment_debit, 10_000);
         assert_eq!(quote.hush_fee_debit, 50);
 
@@ -623,13 +571,13 @@ mod tests {
             amount: 8_000,
             fee_schedule_version: PAYMENT_FEE_SCHEDULE_STANDARD,
         })
-        .expect_err("cross-asset route should be rejected");
-        assert!(err.contains("cross-asset"));
+        .expect_err("unsupported route should be rejected");
+        assert!(err.contains("unsupported payment fee route"));
     }
 
     #[test]
     fn test_malformed_submission_rejected_for_insufficient_hush_balance() {
-        let mut request = sample_mode_b_request();
+        let mut request = sample_hush_gas_request();
         request.hush_balance = 0;
         let err = submit_wallet_payment(&request)
             .expect_err("insufficient HUSH fee reserve should be rejected");
@@ -638,8 +586,8 @@ mod tests {
 
     #[test]
     fn test_claimable_payout_records_are_inspectable() {
-        let settlement = submit_wallet_payment(&sample_mode_b_request())
-            .expect("Mode B submission should succeed")
+        let settlement = submit_wallet_payment(&sample_hush_gas_request())
+            .expect("HUSH gas submission should succeed")
             .settlement;
         let record =
             settlement.payout_record_for_validator(1).expect("validator 1 payout should exist");
@@ -648,23 +596,20 @@ mod tests {
 
     #[test]
     fn test_mixed_basket_payout_totals_reconcile_at_consumer_interface() {
-        let result = submit_wallet_payment(&sample_mode_b_request())
-            .expect("Mode B submission should succeed");
+        let result = submit_wallet_payment(&sample_hush_gas_request())
+            .expect("HUSH gas submission should succeed");
         assert_eq!(result.payout_inspection.fee_pools, result.payout_inspection.payout_totals);
         assert_eq!(result.payout_inspection.payout_totals.hush, result.quote.hush_fee_debit);
     }
 
     #[test]
     fn test_supported_paths_marked_real_only_when_backend_backed() {
-        let review = dual_fee_review_snapshot();
+        let review = runtime_review_snapshot();
         assert_eq!(
-            review.item("payment_route_same_asset").map(|item| item.level),
+            review.item("payment_route_hush_gas").map(|item| item.level),
             Some(ImplementationLevel::Supported)
         );
-        assert_eq!(
-            review.item("payment_route_hush_sidecar").map(|item| item.level),
-            Some(ImplementationLevel::Supported)
-        );
+        assert!(review.item("payment_route_stablecoin_fee").is_none());
         assert_eq!(
             review.item("wallet_onboarding").map(|item| item.level),
             Some(ImplementationLevel::RepresentedOnly)
@@ -673,7 +618,7 @@ mod tests {
 
     #[test]
     fn test_unsupported_steps_remain_explicitly_marked() {
-        let review = dual_fee_review_snapshot();
+        let review = runtime_review_snapshot();
         assert_eq!(
             review.item("live_network_submission").map(|item| item.level),
             Some(ImplementationLevel::NotImplemented)
@@ -689,37 +634,39 @@ mod tests {
         // Reproduces the exact demo values: initial USDC balance 1.5M, payment 125k
         let request = WalletSubmissionRequest {
             payment_asset: 1, // USDC
-            fee_asset: 1,     // same-asset
+            fee_asset: 3,     // HUSH gas
             amount: 125_000,
             fee_schedule_version: PAYMENT_FEE_SCHEDULE_STANDARD,
             recipient_owner: 50_000,
             payment_balance: 1_500_000,
-            hush_balance: 250,
+            hush_balance: 1_000,
             attestation_expiry: None,
         };
         let result = submit_wallet_payment(&request)
             .expect("1.5M balance / 125k payment should prove successfully");
-        assert_eq!(result.quote.route, "mode_a_same_asset");
+        assert_eq!(result.quote.route, "hush_gas");
     }
 
     #[test]
     fn test_busy_schedule_quotes_higher_fee_without_amount_dependency() {
         let quote = quote_payment(&WalletQuoteRequest {
             payment_asset: AssetId::Usdc as u32,
-            fee_asset: AssetId::Usdc as u32,
+            fee_asset: AssetId::Hush as u32,
             amount: 50_000_000,
             fee_schedule_version: PAYMENT_FEE_SCHEDULE_BUSY,
         })
         .expect("busy quote should succeed");
         assert_eq!(quote.fee_amount, 125);
-        assert_eq!(quote.payment_debit, 50_000_125);
+        assert_eq!(quote.payment_debit, 50_000_000);
+        assert_eq!(quote.hush_fee_debit, 125);
     }
 
     #[test]
     fn test_busy_schedule_submission_proves_successfully() {
-        let mut request = sample_mode_a_request();
+        let mut request = sample_hush_gas_request();
         request.amount = 5_000_000;
         request.payment_balance = 75_000_000;
+        request.hush_balance = 1_000;
         request.fee_schedule_version = PAYMENT_FEE_SCHEDULE_BUSY;
 
         let result =

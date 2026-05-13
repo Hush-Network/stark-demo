@@ -2,13 +2,12 @@ use std::time::Instant;
 
 use hush_demo_stark::{
     accounting::{
-        accepted_payment_record, accepted_protocol_action_record, BlockAccountingBuilder,
-        EpochAccumulator, ProtocolActionTx, ValidatorBlockParticipation, ValidatorStakeInfo,
+        accepted_payment_record, BlockAccountingBuilder, EpochAccumulator,
+        ValidatorBlockParticipation, ValidatorStakeInfo,
     },
     circuit,
     measurement::{duration_to_ms, format_duration_ms},
-    payment_fixtures::{valid_usdc_hush_fee_fixture, valid_usdc_same_asset_fixture},
-    payment_tx::TxKind,
+    payment_fixtures::valid_usdc_hush_fee_fixture,
     payment_validation, poseidon2, provenance_attestation, time_window,
     types::MERKLE_DEPTH,
 };
@@ -24,7 +23,7 @@ fn stats(times: &[f64]) -> (f64, f64, f64) {
 }
 
 fn bench_payment() -> ((f64, f64, f64), (f64, f64, f64)) {
-    let witness = valid_usdc_same_asset_fixture().witness;
+    let witness = valid_usdc_hush_fee_fixture().witness;
 
     let mut prove_times = Vec::new();
     let mut verify_times = Vec::new();
@@ -42,26 +41,7 @@ fn bench_payment() -> ((f64, f64, f64), (f64, f64, f64)) {
     (stats(&prove_times), stats(&verify_times))
 }
 
-fn bench_payment_bundle_mode_a() -> ((f64, f64, f64), (f64, f64, f64)) {
-    let fixture = valid_usdc_same_asset_fixture();
-    let mut prove_times = Vec::new();
-    let mut verify_times = Vec::new();
-
-    for _ in 0..ITERATIONS {
-        let start = Instant::now();
-        let bundle =
-            payment_validation::prove_payment_bundle(&fixture.tx, &fixture.witness, None).unwrap();
-        prove_times.push(duration_to_ms(start.elapsed()));
-
-        let start = Instant::now();
-        payment_validation::validate_payment_bundle(&fixture.tx, &bundle).unwrap();
-        verify_times.push(duration_to_ms(start.elapsed()));
-    }
-
-    (stats(&prove_times), stats(&verify_times))
-}
-
-fn bench_payment_bundle_mode_b() -> ((f64, f64, f64), (f64, f64, f64)) {
+fn bench_payment_bundle_with_hush_gas() -> ((f64, f64, f64), (f64, f64, f64)) {
     let fixture = valid_usdc_hush_fee_fixture();
     let mut prove_times = Vec::new();
     let mut verify_times = Vec::new();
@@ -85,30 +65,20 @@ fn bench_payment_bundle_mode_b() -> ((f64, f64, f64), (f64, f64, f64)) {
 }
 
 fn bench_accounting_accept() -> (f64, f64, f64) {
-    let mode_a = valid_usdc_same_asset_fixture();
-    let mode_a_bundle =
-        payment_validation::prove_payment_bundle(&mode_a.tx, &mode_a.witness, None).unwrap();
-    let mode_b = valid_usdc_hush_fee_fixture();
-    let mode_b_bundle = payment_validation::prove_payment_bundle(
-        &mode_b.tx,
-        &mode_b.witness,
-        mode_b.fee_sidecar_witness.as_ref(),
+    let fixture = valid_usdc_hush_fee_fixture();
+    let bundle = payment_validation::prove_payment_bundle(
+        &fixture.tx,
+        &fixture.witness,
+        fixture.fee_sidecar_witness.as_ref(),
     )
     .unwrap();
-    let mode_a_record = accepted_payment_record(&mode_a.tx, &mode_a_bundle).unwrap();
-    let mode_b_record = accepted_payment_record(&mode_b.tx, &mode_b_bundle).unwrap();
-    let action_record = accepted_protocol_action_record(
-        &ProtocolActionTx::build(TxKind::ValidatorAction, 900, 9).unwrap(),
-    )
-    .unwrap();
+    let record = accepted_payment_record(&fixture.tx, &bundle).unwrap();
 
     let mut times = Vec::new();
     for _ in 0..ITERATIONS {
         let start = Instant::now();
         let mut block = BlockAccountingBuilder::new(100, 1);
-        block.record_accepted_tx_record(&mode_a_record).unwrap();
-        block.record_accepted_tx_record(&mode_b_record).unwrap();
-        block.record_accepted_tx_record(&action_record).unwrap();
+        block.record_accepted_tx_record(&record).unwrap();
         let record = block.finalize();
         record.validate().unwrap();
         times.push(duration_to_ms(start.elapsed()));
@@ -117,28 +87,21 @@ fn bench_accounting_accept() -> (f64, f64, f64) {
 }
 
 fn bench_epoch_accrual() -> (f64, f64, f64) {
-    let mode_a = valid_usdc_same_asset_fixture();
-    let mode_a_bundle =
-        payment_validation::prove_payment_bundle(&mode_a.tx, &mode_a.witness, None).unwrap();
-    let mode_b = valid_usdc_hush_fee_fixture();
-    let mode_b_bundle = payment_validation::prove_payment_bundle(
-        &mode_b.tx,
-        &mode_b.witness,
-        mode_b.fee_sidecar_witness.as_ref(),
+    let fixture = valid_usdc_hush_fee_fixture();
+    let bundle = payment_validation::prove_payment_bundle(
+        &fixture.tx,
+        &fixture.witness,
+        fixture.fee_sidecar_witness.as_ref(),
     )
     .unwrap();
-    let mode_a_record = accepted_payment_record(&mode_a.tx, &mode_a_bundle).unwrap();
-    let mode_b_record = accepted_payment_record(&mode_b.tx, &mode_b_bundle).unwrap();
+    let record = accepted_payment_record(&fixture.tx, &bundle).unwrap();
 
     let mut blocks = Vec::new();
     for height in 0..4u64 {
-        let mut mode_a_record = mode_a_record.clone();
-        mode_a_record.tx_id += height * 10 + 1;
-        let mut mode_b_record = mode_b_record.clone();
-        mode_b_record.tx_id += height * 10 + 2;
+        let mut record = record.clone();
+        record.tx_id += height;
         let mut block = BlockAccountingBuilder::new(200 + height, 1);
-        block.record_accepted_tx_record(&mode_a_record).unwrap();
-        block.record_accepted_tx_record(&mode_b_record).unwrap();
+        block.record_accepted_tx_record(&record).unwrap();
         blocks.push(block.finalize());
     }
     let validators = vec![
@@ -181,18 +144,14 @@ fn bench_epoch_accrual() -> (f64, f64, f64) {
 }
 
 fn bench_payout_generation() -> (f64, f64, f64) {
-    let mode_a = valid_usdc_same_asset_fixture();
-    let mode_a_bundle =
-        payment_validation::prove_payment_bundle(&mode_a.tx, &mode_a.witness, None).unwrap();
-    let mode_b = valid_usdc_hush_fee_fixture();
-    let mode_b_bundle = payment_validation::prove_payment_bundle(
-        &mode_b.tx,
-        &mode_b.witness,
-        mode_b.fee_sidecar_witness.as_ref(),
+    let fixture = valid_usdc_hush_fee_fixture();
+    let bundle = payment_validation::prove_payment_bundle(
+        &fixture.tx,
+        &fixture.witness,
+        fixture.fee_sidecar_witness.as_ref(),
     )
     .unwrap();
-    let mode_a_record = accepted_payment_record(&mode_a.tx, &mode_a_bundle).unwrap();
-    let mode_b_record = accepted_payment_record(&mode_b.tx, &mode_b_bundle).unwrap();
+    let record = accepted_payment_record(&fixture.tx, &bundle).unwrap();
     let validators = vec![
         ValidatorStakeInfo { validator_id: 1, payout_key: 101, effective_stake: 100 },
         ValidatorStakeInfo { validator_id: 2, payout_key: 202, effective_stake: 100 },
@@ -215,8 +174,7 @@ fn bench_payout_generation() -> (f64, f64, f64) {
     let mut times = Vec::new();
     for iteration in 0..ITERATIONS {
         let mut block = BlockAccountingBuilder::new(300 + iteration as u64, 1);
-        block.record_accepted_tx_record(&mode_a_record).unwrap();
-        block.record_accepted_tx_record(&mode_b_record).unwrap();
+        block.record_accepted_tx_record(&record).unwrap();
         let block = block.finalize();
         let mut epoch = EpochAccumulator::new(12);
         epoch.apply_block(&block, &validators, &participation).unwrap();
@@ -329,8 +287,7 @@ fn main() {
     );
 
     let (prove, verify) = bench_payment();
-    let (mode_a_bundle_prove, mode_a_bundle_verify) = bench_payment_bundle_mode_a();
-    let (mode_b_bundle_prove, mode_b_bundle_verify) = bench_payment_bundle_mode_b();
+    let (bundle_prove, bundle_verify) = bench_payment_bundle_with_hush_gas();
     let accounting_accept = bench_accounting_accept();
     let epoch_accrual = bench_epoch_accrual();
     let payout_generation = bench_payout_generation();
@@ -349,19 +306,11 @@ fn main() {
     );
     println!(
         "| {:<19} | {} | {} | {} | {} |",
-        "Mode A Bundle",
-        timing_cell(mode_a_bundle_prove.1),
-        timing_cell(mode_a_bundle_prove.0),
-        timing_cell(mode_a_bundle_prove.2),
-        timing_cell(mode_a_bundle_verify.1)
-    );
-    println!(
-        "| {:<19} | {} | {} | {} | {} |",
-        "Mode B Bundle",
-        timing_cell(mode_b_bundle_prove.1),
-        timing_cell(mode_b_bundle_prove.0),
-        timing_cell(mode_b_bundle_prove.2),
-        timing_cell(mode_b_bundle_verify.1)
+        "Payment Bundle",
+        timing_cell(bundle_prove.1),
+        timing_cell(bundle_prove.0),
+        timing_cell(bundle_prove.2),
+        timing_cell(bundle_verify.1)
     );
     println!(
         "| {:<19} | {} | {} | {} | {:>11} |",
@@ -402,12 +351,6 @@ fn main() {
         timing_cell(payout_generation.0),
         timing_cell(payout_generation.2),
         "(state)"
-    );
-    println!();
-    println!(
-        "Mode B / Mode A bundle prove ratio: {:.2}x | verify ratio: {:.2}x",
-        mode_b_bundle_prove.1 / mode_a_bundle_prove.1,
-        mode_b_bundle_verify.1 / mode_a_bundle_verify.1
     );
     println!();
 }

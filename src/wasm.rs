@@ -15,10 +15,10 @@ pub fn wasm_init() {
 
 use crate::{
     circuit,
-    dual_fee_runtime::{
+    hush_gas_runtime::{
         quote_payment, submit_wallet_payment, WalletQuoteRequest, WalletSubmissionRequest,
     },
-    payment_tx::compute_mode_a_tx_binding_hash,
+    payment_tx::compute_payment_tx_binding_hash,
     provenance_attestation,
 };
 
@@ -161,7 +161,7 @@ pub fn recompute_tx_binding_hash_json(binding_json: &str) -> String {
             return serde_json::json!({ "error": format!("invalid binding JSON: {e}") }).to_string()
         }
     };
-    let hash = compute_mode_a_tx_binding_hash(
+    let hash = compute_payment_tx_binding_hash(
         b.replay_domain,
         b.payment_asset,
         b.fee_asset,
@@ -178,7 +178,7 @@ pub fn recompute_tx_binding_hash_json(binding_json: &str) -> String {
 }
 
 #[wasm_bindgen]
-pub fn dual_fee_quote_payment_with_schedule_json(
+pub fn hush_gas_quote_payment_with_schedule_json(
     payment_asset: u32,
     fee_asset: u32,
     amount: f64,
@@ -197,7 +197,7 @@ pub fn dual_fee_quote_payment_with_schedule_json(
 }
 
 #[wasm_bindgen]
-pub fn dual_fee_submit_demo_payment_json(
+pub fn hush_gas_submit_demo_payment_json(
     payment_asset: u32,
     fee_asset: u32,
     amount: f64,
