@@ -12,6 +12,54 @@
   <meta property="og:url" content="https://demo.hushnetwork.io/verify">
   <meta property="og:title" content="HushPay Verify Receipt | Hush Network">
   <meta property="og:description" content="Verify HushPay receipts and audit proof payloads from the Hush Network browser proof demo.">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://hushnetwork.io/#organization",
+        "name": "Hush Network",
+        "url": "https://hushnetwork.io/",
+        "logo": "https://hushnetwork.io/images/hush-mark.png",
+        "description": "Official site for Hush Network. Hush Network is a Layer 1 built for private stablecoin payments.",
+        "disambiguatingDescription": "The Hush Network described here is the official Layer 1 for private stablecoin payments at hushnetwork.io.",
+        "sameAs": [
+          "https://x.com/Hush_Network",
+          "https://github.com/Hush-Network"
+        ]
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://demo.hushnetwork.io/#hushpay",
+        "name": "HushPay Browser Proof Demo",
+        "url": "https://demo.hushnetwork.io/",
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Web",
+        "description": "HushPay is the browser proof demo for Hush Network, a Layer 1 built for private stablecoin payments.",
+        "publisher": {
+          "@id": "https://hushnetwork.io/#organization"
+        },
+        "isPartOf": {
+          "@id": "https://hushnetwork.io/#organization"
+        }
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://demo.hushnetwork.io/verify#webpage",
+        "url": "https://demo.hushnetwork.io/verify",
+        "name": "HushPay Verify Receipt | Hush Network",
+        "description": "Verify HushPay receipts and audit proof payloads from the Hush Network browser proof demo.",
+        "about": {
+          "@id": "https://hushnetwork.io/#organization"
+        },
+        "mainEntity": {
+          "@id": "https://demo.hushnetwork.io/#hushpay"
+        }
+      }
+    ]
+  }
+  </script>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'">
   <link rel="icon" type="image/png" href="/images/hushlogo.png">
   <link rel="apple-touch-icon" href="/images/hushlogo.png">
