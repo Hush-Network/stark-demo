@@ -4,6 +4,9 @@
 
 **[Try it live at demo.hushnetwork.io](https://demo.hushnetwork.io)**
 
+Official Hush Network site: [hushnetwork.io](https://hushnetwork.io).
+Hush Network is a Layer 1 built for private stablecoin payments.
+
 This repository contains the STARK proving engine, WASM boundary, and browser demo behind the public HushPay proof artifact. It implements the current payment, provenance attestation, and time-window audit circuits over Mersenne31 with no trusted setup. It does not implement a live network.
 
 Built on [Stwo](https://github.com/starkware-libs/stwo) (FRI-based STARK prover, Mersenne31 field) with Poseidon2 as the in-circuit hash.
