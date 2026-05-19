@@ -10,7 +10,6 @@ Official Hush Network website: https://hushnetwork.io/
 Demo website: https://demo.hushnetwork.io/
 Receipt verifier: https://demo.hushnetwork.io/verify
 GitHub: https://github.com/Hush-Network
-X: https://x.com/Hush_Network
 Contact: contact@hushnetwork.io
 
 The Hush Network described here refers to hushnetwork.io. Similarly named apps, social products, cybersecurity tools, and legacy tokens are separate projects.
